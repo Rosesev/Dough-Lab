@@ -1,32 +1,102 @@
-// ===== Dough Lab – localStorage =====
-const DB_KEY = 'doughlab_db';
-const DEFAULT_DB = {
-  users: [{ id: 'severine.rose', nom: 'Mme Rosé', prenom: 'Séverine', initiales: 'SR', role: 'prof', pw: 'Sr31107155!!!', classe: null }],
-  cours: [], exercices: [], devoirs: [], rendus: [], resultats: [], progression: []
-};
-const DB = {
-  _data: null,
-  load() {
-    const raw = localStorage.getItem(DB_KEY);
-    if (raw) { try { this._data = JSON.parse(raw); } catch(e) { this._data = JSON.parse(JSON.stringify(DEFAULT_DB)); } }
-    else { this._data = JSON.parse(JSON.stringify(DEFAULT_DB)); this.save(); }
-    if (!this._data.users.find(u => u.id === 'severine.rose')) { this._data.users.push({ id: 'severine.rose', nom: 'Mme Rosé', prenom: 'Séverine', initiales: 'SR', role: 'prof', pw: 'Sr31107155!!!', classe: null }); this.save(); }
-    return this._data;
+// ===== Dough Lab – Supabase =====
+const SUPABASE_URL = 'https://bwrcvagarvifdzqtbrla.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ3cmN2YWdhcnZpZmR6cXRicmxhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExOTExNzAsImV4cCI6MjA5Njc2NzE3MH0.5E75-_rTHBTaOsr90Ksj0Yhm0BFe0J0rZV-SAbRuW_M';
+
+const SB = {
+  headers: {
+    'apikey': SUPABASE_KEY,
+    'Authorization': 'Bearer ' + SUPABASE_KEY,
+    'Content-Type': 'application/json',
+    'Prefer': 'return=representation'
   },
-  save() { localStorage.setItem(DB_KEY, JSON.stringify(this._data)); },
-  get(table) { return this._data[table] || []; },
-  getById(table, id) { return (this._data[table] || []).find(x => x.id === id) || null; },
-  insert(table, item) { if (!this._data[table]) this._data[table] = []; item.id = item.id || (table + '_' + Date.now()); this._data[table].push(item); this.save(); return item; },
-  update(table, id, updates) { const idx = (this._data[table] || []).findIndex(x => x.id === id); if (idx >= 0) { this._data[table][idx] = Object.assign({}, this._data[table][idx], updates); this.save(); } return this.getById(table, id); },
-  delete(table, id) { this._data[table] = (this._data[table] || []).filter(x => x.id !== id); this.save(); },
-  where(table, predicate) { return (this._data[table] || []).filter(predicate); },
-  getUser(id) { return this.getById('users', id); },
-  getEleves() { return this.where('users', u => u.role === 'eleve'); },
-  getProgressionCours(eleveId, coursId) { return this.where('progression', p => p.eleveId === eleveId && p.coursId === coursId)[0] || null; },
-  setProgressionCours(eleveId, coursId, pct) { const ex = this.where('progression', p => p.eleveId === eleveId && p.coursId === coursId)[0]; if (ex) this.update('progression', ex.id, { pct }); else this.insert('progression', { eleveId, coursId, pct }); },
-  getRenduEleve(devoirId, eleveId) { return this.where('rendus', r => r.devoirId === devoirId && r.eleveId === eleveId)[0] || null; },
-  getResultatsEleve(eleveId) { return this.where('resultats', r => r.eleveId === eleveId); },
-  addResultat(eleveId, exerciceId, score, total, type) { this._data.resultats = this._data.resultats.filter(r => !(r.eleveId === eleveId && r.exerciceId === exerciceId)); return this.insert('resultats', { eleveId, exerciceId, score, total, date: new Date().toISOString().slice(0,10), type }); },
-  reset() { this._data = JSON.parse(JSON.stringify(DEFAULT_DB)); this.save(); }
+
+  async get(table) {
+    const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + '?select=*&order=created_at.asc', { headers: this.headers });
+    if (!r.ok) { const e = await r.text(); throw new Error('GET ' + table + ': ' + e); }
+    return r.json();
+  },
+
+  async getById(table, id) {
+    const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + '?id=eq.' + encodeURIComponent(id), { headers: this.headers });
+    if (!r.ok) throw new Error('GETID ' + table);
+    const rows = await r.json();
+    return rows[0] || null;
+  },
+
+  async insert(table, item) {
+    const r = await fetch(SUPABASE_URL + '/rest/v1/' + table, {
+      method: 'POST', headers: this.headers, body: JSON.stringify(item)
+    });
+    if (!r.ok) { const e = await r.text(); throw new Error('INSERT ' + table + ': ' + e); }
+    const rows = await r.json();
+    return Array.isArray(rows) ? rows[0] : rows;
+  },
+
+  async update(table, id, updates) {
+    const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + '?id=eq.' + encodeURIComponent(id), {
+      method: 'PATCH', headers: this.headers, body: JSON.stringify(updates)
+    });
+    if (!r.ok) throw new Error('UPDATE ' + table);
+    const rows = await r.json();
+    return Array.isArray(rows) ? rows[0] : rows;
+  },
+
+  async delete(table, id) {
+    const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + '?id=eq.' + encodeURIComponent(id), {
+      method: 'DELETE', headers: this.headers
+    });
+    if (!r.ok) throw new Error('DELETE ' + table);
+  },
+
+  async where(table, col, val) {
+    const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + '?' + col + '=eq.' + encodeURIComponent(val), { headers: this.headers });
+    if (!r.ok) throw new Error('WHERE ' + table);
+    return r.json();
+  }
 };
-DB.load();
+
+// Utilisateurs en localStorage
+const USERS_KEY = 'doughlab_users_v2';
+let _users = [
+  { id: 'severine.rose', nom: 'Mme Rosé', prenom: 'Séverine', initiales: 'SR', role: 'prof', pw: 'Sr31107155!!!', classe: null }
+];
+
+(function loadUsers() {
+  const raw = localStorage.getItem(USERS_KEY);
+  if (!raw) return;
+  try { JSON.parse(raw).forEach(u => { if (!_users.find(x => x.id === u.id)) _users.push(u); }); } catch(e) {}
+})();
+
+function saveUsers() { localStorage.setItem(USERS_KEY, JSON.stringify(_users)); }
+
+// Résultats et progression en localStorage (propres à chaque élève)
+function getResultatsEleve(eleveId) {
+  try { return JSON.parse(localStorage.getItem('dl_res_' + eleveId) || '[]'); } catch(e) { return []; }
+}
+function addResultat(eleveId, exerciceId, score, total, type) {
+  let res = getResultatsEleve(eleveId).filter(r => r.exerciceId !== exerciceId);
+  res.push({ exerciceId, score, total, type, date: new Date().toISOString().slice(0,10) });
+  localStorage.setItem('dl_res_' + eleveId, JSON.stringify(res));
+}
+function getProgressionCours(eleveId, coursId) {
+  try { return (JSON.parse(localStorage.getItem('dl_prog_' + eleveId) || '[]')).find(p => p.coursId === coursId) || null; } catch(e) { return null; }
+}
+function setProgressionCours(eleveId, coursId, pct) {
+  let progs = [];
+  try { progs = JSON.parse(localStorage.getItem('dl_prog_' + eleveId) || '[]'); } catch(e) {}
+  const i = progs.findIndex(p => p.coursId === coursId);
+  if (i >= 0) progs[i].pct = pct; else progs.push({ coursId, pct });
+  localStorage.setItem('dl_prog_' + eleveId, JSON.stringify(progs));
+}
+
+// Interface DB unifiée
+const DB = {
+  getUser: id => _users.find(u => u.id === id) || null,
+  getEleves: () => _users.filter(u => u.role === 'eleve'),
+  addUser(user) { _users.push(user); saveUsers(); },
+  removeUser(id) { _users = _users.filter(u => u.id !== id); saveUsers(); },
+  getResultatsEleve,
+  addResultat,
+  getProgressionCours,
+  setProgressionCours
+};
