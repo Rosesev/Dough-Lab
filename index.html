@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BoulanPâtiss'Learn – Plateforme Bac Pro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=1.7">
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen" class="login-screen">
+  <div class="login-bg">
+    <div class="grain"></div>
+    <div class="login-deco deco1"></div>
+    <div class="login-deco deco2"></div>
+    <div class="login-deco deco3"></div>
+  </div>
+  <div class="login-card">
+    <div class="login-logo">
+      <span class="logo-emoji">🥐</span>
+      <div>
+        <div class="login-title">BoulanPâtiss'<span>Learn</span></div>
+        <div class="login-subtitle">Plateforme pédagogique · Bac Pro</div>
+      </div>
+    </div>
+    <div class="role-tabs">
+      <button class="role-tab active" id="tab-eleve" onclick="window.loginRole='eleve';document.getElementById('tab-eleve').classList.add('active');document.getElementById('tab-prof').classList.remove('active');">Élève</button>
+      <button class="role-tab" id="tab-prof" onclick="window.loginRole='prof';document.getElementById('tab-prof').classList.add('active');document.getElementById('tab-eleve').classList.remove('active');">Professeur</button>
+    </div>
+    <div class="form-group">
+      <label>Identifiant</label>
+      <div style="position:relative">
+        <input type="text" id="login-id" class="form-input" placeholder="prenom.nom" style="padding-right:42px">
+        <button type="button" onclick="togglePw('login-id','eye-id')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-light);padding:2px" title="Afficher / masquer">
+          <span id="eye-id">👁</span>
+        </button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Mot de passe</label>
+      <div style="position:relative">
+        <input type="password" id="login-pw" class="form-input" placeholder="••••••••" style="padding-right:42px">
+        <button type="button" onclick="togglePw('login-pw','eye-login')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-light);padding:2px" title="Afficher / masquer">
+          <span id="eye-login">👁</span>
+        </button>
+      </div>
+      <div class="form-hint" id="login-hint"></div>
+    </div>
+    <div class="login-error" id="login-error"></div>
+    <button class="btn-login" onclick="doLogin()">Se connecter →</button>
+    <div class="login-footer">Accès réservé aux élèves et enseignants inscrits</div>
+    <div style="text-align:center;margin-bottom:12px">
+      <button onclick="hardReset()" style="background:none;border:none;font-size:11px;color:var(--text-light);cursor:pointer;text-decoration:underline">🔄 Problème de connexion ? Cliquez ici pour réinitialiser</button>
+    </div>
+    <div class="demo-accounts">
+      <div class="demo-title">Connexion rapide</div>
+      <div class="demo-row" onclick="fillDemo('severine.rose','Sr31107155!!!','prof')"><span>👩‍🏫 severine.rose</span><span class="demo-badge prof">Prof</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app" class="app hidden">
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <span>🥐</span>
+      <span class="sidebar-brand">BoulanPâtiss'<br><em>Learn</em></span>
+    </div>
+    <div class="sidebar-user" id="sidebar-user">
+      <div class="user-avatar" id="nav-avatar">MD</div>
+      <div class="user-info">
+        <div class="user-name" id="nav-name">Martin Dupont</div>
+        <div class="user-role" id="nav-role">Élève</div>
+      </div>
+    </div>
+    <div class="nav-section">Navigation</div>
+    <a class="nav-link active" onclick="goTo('accueil')" data-page="accueil">
+      <span class="nav-icon">⌂</span> Accueil
+    </a>
+    <a class="nav-link" onclick="goTo('cours')" data-page="cours">
+      <span class="nav-icon">📚</span> Cours
+    </a>
+    <a class="nav-link" onclick="goTo('exercices')" data-page="exercices">
+      <span class="nav-icon">✏️</span> Exercices
+    </a>
+    <a class="nav-link" onclick="goTo('travaux')" data-page="travaux">
+      <span class="nav-icon">📤</span> Mes travaux
+    </a>
+    <a class="nav-link" onclick="goTo('examens')" data-page="examens">
+      <span class="nav-icon">📋</span> Mode examen
+    </a>
+    <a class="nav-link" onclick="goTo('resultats')" data-page="resultats">
+      <span class="nav-icon">📊</span> Mes résultats
+    </a>
+    <div class="nav-section prof-only hidden" id="nav-section-prof">Enseignant</div>
+    <a class="nav-link prof-only hidden" onclick="goTo('gestion-cours')" data-page="gestion-cours" id="nl-gestion-cours">
+      <span class="nav-icon">📝</span> Gérer les cours
+    </a>
+    <a class="nav-link prof-only hidden" onclick="goTo('gestion-exercices')" data-page="gestion-exercices" id="nl-gestion-exercices">
+      <span class="nav-icon">🎯</span> Gérer les exercices
+    </a>
+    <a class="nav-link prof-only hidden" onclick="goTo('gestion-travaux')" data-page="gestion-travaux" id="nl-gestion-travaux">
+      <span class="nav-icon">📥</span> Travaux rendus
+    </a>
+    <a class="nav-link prof-only hidden" onclick="goTo('gestion-eleves')" data-page="gestion-eleves" id="nl-gestion-eleves">
+      <span class="nav-icon">👥</span> Élèves
+    </a>
+    <div class="sidebar-bottom">
+      <button class="btn-logout" onclick="doLogout()">Déconnexion</button>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="main-content">
+
+    <!-- ===== ACCUEIL ===== -->
+    <div class="page active" id="page-accueil">
+      <div class="page-header">
+        <h1 id="welcome-h1">Bonjour Martin 👋</h1>
+        <p id="welcome-p">Terminale Bac Pro Boulangerie-Pâtisserie · Bienvenue sur votre espace</p>
+      </div>
+      <div class="stats-row" id="stats-row"></div>
+      <div class="two-col">
+        <div>
+          <h2 class="section-title">Activité récente</h2>
+          <div id="recent-activity"></div>
+        </div>
+        <div>
+          <h2 class="section-title">À faire</h2>
+          <div id="todo-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== COURS ===== -->
+    <div class="page hidden" id="page-cours">
+      <div class="page-header">
+        <h1>Ressources de cours</h1>
+        <p>Tous vos supports pédagogiques · Accès sécurisé</p>
+      </div>
+      <div class="search-bar">
+        <input type="text" class="form-input" placeholder="Rechercher un cours…" oninput="filterCours(this.value)" id="cours-search">
+      </div>
+      <div id="cours-list"></div>
+    </div>
+
+    <!-- ===== EXERCICES ===== -->
+    <div class="page hidden" id="page-exercices">
+      <div class="page-header">
+        <h1>Exercices interactifs</h1>
+        <p>Entraînez-vous avant les évaluations</p>
+      </div>
+      <div id="exercices-home">
+        <div id="exercices-grid" class="cards-grid"></div>
+      </div>
+      <div id="exercice-player" class="hidden"></div>
+    </div>
+
+    <!-- ===== TRAVAUX ===== -->
+    <div class="page hidden" id="page-travaux">
+      <div class="page-header">
+        <h1>Mes travaux</h1>
+        <p>Rendez vos productions et consultez vos évaluations</p>
+      </div>
+      <div id="travaux-content"></div>
+    </div>
+
+    <!-- ===== EXAMENS ===== -->
+    <div class="page hidden" id="page-examens">
+      <div class="page-header">
+        <h1>Mode Examen</h1>
+        <p>Évaluations en conditions réelles · Chronomètre activé</p>
+      </div>
+      <div id="examens-home">
+        <div class="exam-warning-banner">
+          <span class="exam-warning-icon">⚠️</span>
+          <div>
+            <strong>Règles du mode examen</strong>
+            <span>Navigation verrouillée · Aucune aide · Résultats après validation uniquement</span>
+          </div>
+        </div>
+        <div id="examens-grid" class="cards-grid"></div>
+      </div>
+      <div id="exam-player" class="hidden"></div>
+    </div>
+
+    <!-- ===== RÉSULTATS ===== -->
+    <div class="page hidden" id="page-resultats">
+      <div class="page-header">
+        <h1>Mes résultats</h1>
+        <p>Suivi de progression et historique</p>
+      </div>
+      <div id="resultats-content"></div>
+    </div>
+
+    <!-- ===== PROF : GESTION COURS ===== -->
+    <div class="page hidden prof-only" id="page-gestion-cours">
+      <div class="page-header flex-between">
+        <div>
+          <h1>Gérer les cours</h1>
+          <p>Ajouter, modifier, supprimer des ressources pédagogiques</p>
+        </div>
+        <button class="btn-primary" onclick="showModal('modal-add-cours')">+ Ajouter un cours</button>
+      </div>
+      <div id="prof-cours-list"></div>
+    </div>
+
+    <!-- ===== PROF : GESTION EXERCICES ===== -->
+    <div class="page hidden prof-only" id="page-gestion-exercices">
+      <div class="page-header flex-between">
+        <div>
+          <h1>Gérer les exercices & examens</h1>
+          <p>Créer des QCM, exercices et évaluations</p>
+        </div>
+        <button class="btn-primary" onclick="showModal('modal-add-exercice')">+ Créer un exercice</button>
+      </div>
+      <div id="prof-exercices-list"></div>
+    </div>
+
+    <!-- ===== PROF : TRAVAUX RENDUS ===== -->
+    <div class="page hidden prof-only" id="page-gestion-travaux">
+      <div class="page-header">
+        <h1>Travaux rendus</h1>
+        <p>Consulter, noter et commenter les productions des élèves</p>
+      </div>
+      <div id="prof-travaux-list"></div>
+    </div>
+
+    <!-- ===== PROF : ÉLÈVES ===== -->
+    <div class="page hidden prof-only" id="page-gestion-eleves">
+      <div class="page-header flex-between">
+        <div>
+          <h1>Gestion des élèves</h1>
+          <p>Comptes, accès et groupes</p>
+        </div>
+        <button class="btn-primary" onclick="showModal('modal-add-eleve')">+ Ajouter un élève</button>
+      </div>
+      <div id="prof-eleves-list"></div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ===== MODALS ===== -->
+<div class="modal-overlay hidden" id="modal-overlay" onclick="closeAllModals()"></div>
+
+<!-- Modal : Ajouter cours -->
+<div class="modal hidden" id="modal-add-cours">
+  <div class="modal-header">
+    <h3>Ajouter un cours</h3>
+    <button class="modal-close" onclick="closeAllModals()">✕</button>
+  </div>
+  <div class="form-group">
+    <label>Titre du cours</label>
+    <input type="text" class="form-input" id="nc-titre" placeholder="Ex: Les pâtes levées – fermentation">
+  </div>
+  <div class="form-group">
+    <label>Matière</label>
+    <select class="form-input" id="nc-matiere">
+      <option>Technologie professionnelle</option>
+      <option>Sciences appliquées</option>
+      <option>Gestion & économie</option>
+      <option>Arts appliqués</option>
+      <option>PSE</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label>Type de ressource</label>
+    <select class="form-input" id="nc-type">
+      <option value="pdf">📄 PDF</option>
+      <option value="video">🎬 Vidéo</option>
+      <option value="fiche">📋 Fiche technique</option>
+      <option value="lien">🔗 Lien externe</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label>URL ou lien de la ressource (optionnel si fichier joint)</label>
+    <input type="text" class="form-input" id="nc-url" placeholder="https://…">
+  </div>
+  <div class="form-group">
+    <label>📎 Joindre un fichier (PDF, Word, image – max 4 Mo)</label>
+    <div class="upload-zone" id="nc-drop-zone" style="cursor:pointer">
+      <div class="upload-zone-icon">📁</div>
+      <div>Glissez un fichier ici ou cliquez pour parcourir</div>
+      <div id="nc-file-label" style="margin-top:6px;font-size:12px;color:var(--gold-dark);font-weight:500"></div>
+      <input type="file" id="nc-file-input" style="display:none" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.mp4">
+    </div>
+  </div>
+  <div class="form-group">
+    <label>Description (optionnel)</label>
+    <textarea class="form-input" id="nc-desc" rows="3" placeholder="Contenu abordé, prérequis…"></textarea>
+  </div>
+  <div class="modal-actions">
+    <button class="btn-secondary" onclick="closeAllModals()">Annuler</button>
+    <button class="btn-primary" onclick="addCours()">Ajouter le cours</button>
+  </div>
+</div>
+
+<!-- Modal : Ajouter exercice/examen -->
+<div class="modal hidden" id="modal-add-exercice">
+  <div class="modal-header">
+    <h3>Créer un exercice ou un examen</h3>
+    <button class="modal-close" onclick="closeAllModals()">✕</button>
+  </div>
+  <div class="form-group">
+    <label>Titre</label>
+    <input type="text" class="form-input" id="ne-titre" placeholder="Ex: QCM Hygiène alimentaire">
+  </div>
+  <div class="form-group">
+    <label>Type</label>
+    <select class="form-input" id="ne-type" onchange="toggleExamMode()">
+      <option value="exercice">Exercice (corrigé immédiat)</option>
+      <option value="examen">Examen (mode surveillé)</option>
+    </select>
+  </div>
+  <div class="form-group" id="ne-duree-group" style="display:none">
+    <label>Durée (minutes)</label>
+    <input type="number" class="form-input" id="ne-duree" value="30" min="5" max="180">
+  </div>
+  <div class="form-group">
+    <label>Matière</label>
+    <select class="form-input" id="ne-matiere">
+      <option>Technologie professionnelle</option>
+      <option>Sciences appliquées</option>
+      <option>Gestion & économie</option>
+      <option>PSE</option>
+    </select>
+  </div>
+  <div id="questions-builder">
+    <div class="form-group">
+      <label>📎 Joindre un document (sujet, énoncé – PDF, image – max 4 Mo)</label>
+      <div class="upload-zone" id="ne-drop-zone" style="cursor:pointer">
+        <div class="upload-zone-icon">📁</div>
+        <div>Glissez un fichier ici ou cliquez pour parcourir</div>
+        <div id="ne-file-label" style="margin-top:6px;font-size:12px;color:var(--gold-dark);font-weight:500"></div>
+        <input type="file" id="ne-file-input" style="display:none" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.gif">
+      </div>
+    </div>
+    <div class="section-title" style="margin:16px 0 8px">Questions QCM</div>
+    <div id="questions-list"></div>
+    <button class="btn-secondary" onclick="addQuestion()" style="margin-top:8px">+ Ajouter une question</button>
+  </div>
+  <div class="modal-actions">
+    <button class="btn-secondary" onclick="closeAllModals()">Annuler</button>
+    <button class="btn-primary" onclick="saveExercice()">Enregistrer</button>
+  </div>
+</div>
+
+<!-- Modal : Ajouter devoir -->
+<div class="modal hidden" id="modal-add-devoir">
+  <div class="modal-header">
+    <h3>Créer un devoir à rendre</h3>
+    <button class="modal-close" onclick="closeAllModals()">✕</button>
+  </div>
+  <div class="form-group">
+    <label>Titre du devoir</label>
+    <input type="text" class="form-input" id="nd-titre" placeholder="Ex: Fiche recette – Galette des rois">
+  </div>
+  <div class="form-group">
+    <label>Consignes</label>
+    <textarea class="form-input" id="nd-consignes" rows="3" placeholder="Décrivez ce que les élèves doivent produire…"></textarea>
+  </div>
+  <div class="form-group">
+    <label>Date limite de rendu</label>
+    <input type="date" class="form-input" id="nd-deadline">
+  </div>
+  <div class="modal-actions">
+    <button class="btn-secondary" onclick="closeAllModals()">Annuler</button>
+    <button class="btn-primary" onclick="addDevoir()">Créer le devoir</button>
+  </div>
+</div>
+
+<!-- Modal : Notation travail -->
+<div class="modal hidden" id="modal-noter">
+  <div class="modal-header">
+    <h3>Corriger et noter</h3>
+    <button class="modal-close" onclick="closeAllModals()">✕</button>
+  </div>
+  <div id="modal-noter-info"></div>
+  <div class="form-group">
+    <label>Note (sur 20)</label>
+    <input type="number" class="form-input" id="noter-note" min="0" max="20" step="0.5" placeholder="Ex: 14">
+  </div>
+  <div class="form-group">
+    <label>Commentaire</label>
+    <textarea class="form-input" id="noter-comment" rows="3" placeholder="Retour sur le travail…"></textarea>
+  </div>
+  <div class="modal-actions">
+    <button class="btn-secondary" onclick="closeAllModals()">Annuler</button>
+    <button class="btn-primary" onclick="saveNote()">Enregistrer la note</button>
+  </div>
+</div>
+
+<!-- Modal : Ajouter élève -->
+<div class="modal hidden" id="modal-add-eleve">
+  <div class="modal-header">
+    <h3>Ajouter un élève</h3>
+    <button class="modal-close" onclick="closeAllModals()">✕</button>
+  </div>
+  <div class="form-group">
+    <label>Prénom</label>
+    <input type="text" class="form-input" id="ae-prenom" placeholder="Prénom">
+  </div>
+  <div class="form-group">
+    <label>Nom</label>
+    <input type="text" class="form-input" id="ae-nom" placeholder="Nom">
+  </div>
+  <div class="form-group">
+    <label>Identifiant (généré automatiquement)</label>
+    <input type="text" class="form-input" id="ae-id" placeholder="prenom.nom" readonly style="opacity:.6">
+  </div>
+  <div class="form-group">
+    <label>Classe</label>
+    <select class="form-input" id="ae-classe">
+      <option value="Terminale Bac Pro">Terminale Bac Pro</option>
+      <option value="1ère Bac Pro">1ère Bac Pro</option>
+      <option value="2nde Bac Pro">2nde Bac Pro</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label>Mot de passe initial</label>
+    <div style="position:relative">
+      <input type="password" class="form-input" id="ae-pw" value="eleve123" style="padding-right:42px">
+      <button type="button" onclick="togglePw('ae-pw','eye-ae')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-light);padding:2px" title="Afficher / masquer">
+        <span id="eye-ae">👁</span>
+      </button>
+    </div>
+  </div>
+  <div class="modal-actions">
+    <button class="btn-secondary" onclick="closeAllModals()">Annuler</button>
+    <button class="btn-primary" onclick="addEleve()">Créer le compte</button>
+  </div>
+</div>
+
+<!-- Modal : Confirmation examen -->
+<div class="modal hidden" id="modal-confirm-exam">
+  <div class="modal-header">
+    <h3>⚠️ Démarrer l'examen ?</h3>
+    <button class="modal-close" onclick="closeAllModals()">✕</button>
+  </div>
+  <div id="exam-confirm-info"></div>
+  <div class="modal-actions">
+    <button class="btn-secondary" onclick="closeAllModals()">Annuler</button>
+    <button class="btn-danger" onclick="startExamConfirmed()">Démarrer l'examen</button>
+  </div>
+</div>
+
+<!-- Modal : Prévisualisation fichier -->
+<div class="modal hidden" id="modal-preview" style="width:680px;max-width:96vw">
+  <div class="modal-header">
+    <h3 id="modal-preview-title">Document</h3>
+    <div style="display:flex;align-items:center;gap:8px">
+      <a id="modal-preview-dl" href="#" download class="btn-secondary btn-sm" style="text-decoration:none">⬇ Télécharger</a>
+      <button class="modal-close" onclick="closeAllModals()">✕</button>
+    </div>
+  </div>
+  <div id="modal-preview-content" style="max-height:70vh;overflow:auto"></div>
+</div>
+
+<!-- Toast -->
+<div class="toast hidden" id="toast"></div>
+
+<script src="db.js?v=1.7"></script>
+<script src="app.js?v=1.7"></script>
+</body>
+</html>
