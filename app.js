@@ -194,7 +194,7 @@ async function renderTravaux(){
 }
 
 async function simulateUpload(devoirId){
-  try{await SB.insert('rendus',{id:'r_'+Date.now(),devoirId:devoirId,eleveId:currentUser.id,date:new Date().toISOString().slice(0,10),note:null,commentaire:null,fileName:'travail_'+currentUser.id+'.pdf'});showToast('✅ Travail déposé !','success');renderTravaux();}catch(e){showToast('Erreur dépôt','error');}
+  try{await SB.insert('rendus',{devoirId:devoirId,eleveId:currentUser.id,date:new Date().toISOString().slice(0,10),note:null,commentaire:null,fileName:'travail_'+currentUser.id+'.pdf'});showToast('✅ Travail déposé !','success');renderTravaux();}catch(e){showToast('Erreur dépôt','error');}
 }
 
 async function deleteDevoir(id){if(!confirm('Supprimer ?'))return;try{await SB.delete('devoirs',id);renderTravaux();showToast('Devoir supprimé');}catch(e){showToast('Erreur','error');}}
@@ -277,7 +277,7 @@ async function addCours(){
   var titre=document.getElementById('nc-titre').value.trim();
   if(!titre){showToast('Veuillez saisir un titre','error');return;}
   try{
-    var item={id:'cours_'+Date.now(),titre:titre,matiere:document.getElementById('nc-matiere').value,type:document.getElementById('nc-type').value,url:document.getElementById('nc-url').value||'#',description:document.getElementById('nc-desc').value,date:new Date().toISOString().slice(0,10),nouveau:true};
+    var item={titre:titre,matiere:document.getElementById('nc-matiere').value,type:document.getElementById('nc-type').value,url:document.getElementById('nc-url').value||'#',description:document.getElementById('nc-desc').value,date:new Date().toISOString().slice(0,10),nouveau:true};
     if(pendingCoursFile){item.fileData=pendingCoursFile.fileData;item.fileName=pendingCoursFile.fileName;item.fileMime=pendingCoursFile.fileMime;}
     await SB.insert('cours',item);
     pendingCoursFile=null;closeAllModals();renderGestionCours();showToast('✅ Cours ajouté !','success');
@@ -314,7 +314,7 @@ async function saveExercice(){
   if(!qs.length){showToast('Ajoutez au moins une question','error');return;}
   var type=document.getElementById('ne-type').value;
   try{
-    var item={id:'ex_'+Date.now(),titre:titre,type:type,matiere:document.getElementById('ne-matiere').value,duree:type==='examen'?parseInt(document.getElementById('ne-duree').value):null,questions:qs};
+    var item={titre:titre,type:type,matiere:document.getElementById('ne-matiere').value,duree:type==='examen'?parseInt(document.getElementById('ne-duree').value):null,questions:qs};
     if(pendingExerciceFile){item.fileData=pendingExerciceFile.fileData;item.fileName=pendingExerciceFile.fileName;item.fileMime=pendingExerciceFile.fileMime;}
     await SB.insert('exercices',item);
     closeAllModals();questionBlocks=[];pendingExerciceFile=null;document.getElementById('questions-list').innerHTML='';renderGestionExercices();showToast('✅ Exercice créé !','success');
@@ -381,7 +381,7 @@ function deleteEleve(id){if(!confirm('Supprimer '+id+' ?'))return;DB.removeUser(
 async function addDevoir(){
   var titre=document.getElementById('nd-titre').value.trim();
   if(!titre){showToast('Veuillez saisir un titre','error');return;}
-  try{await SB.insert('devoirs',{id:'d_'+Date.now(),titre:titre,consignes:document.getElementById('nd-consignes').value,deadline:document.getElementById('nd-deadline').value||new Date(Date.now()+7*86400000).toISOString().slice(0,10),creePar:currentUser.id});closeAllModals();renderTravaux();showToast('✅ Devoir créé !','success');}catch(e){showToast('Erreur création devoir','error');}
+  try{await SB.insert('devoirs',{titre:titre,consignes:document.getElementById('nd-consignes').value,deadline:document.getElementById('nd-deadline').value||new Date(Date.now()+7*86400000).toISOString().slice(0,10),creePar:currentUser.id});closeAllModals();renderTravaux();showToast('✅ Devoir créé !','success');}catch(e){showToast('Erreur création devoir','error');}
 }
 
 // MODALS

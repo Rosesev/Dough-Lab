@@ -17,7 +17,7 @@ const SB = {
   },
 
   async getById(table, id) {
-    const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + '?id=eq.' + encodeURIComponent(id), { headers: this.headers });
+    const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + '?id=eq.' + id, { headers: this.headers });
     if (!r.ok) throw new Error('GETID ' + table);
     const rows = await r.json();
     return rows[0] || null;
@@ -33,7 +33,7 @@ const SB = {
   },
 
   async update(table, id, updates) {
-    const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + '?id=eq.' + encodeURIComponent(id), {
+    const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + '?id=eq.' + id, {
       method: 'PATCH', headers: this.headers, body: JSON.stringify(updates)
     });
     if (!r.ok) throw new Error('UPDATE ' + table);
@@ -42,7 +42,7 @@ const SB = {
   },
 
   async delete(table, id) {
-    const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + '?id=eq.' + encodeURIComponent(id), {
+    const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + '?id=eq.' + id, {
       method: 'DELETE', headers: this.headers
     });
     if (!r.ok) throw new Error('DELETE ' + table);
