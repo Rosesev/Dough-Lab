@@ -29,6 +29,8 @@ function doLogout(){currentUser=null;stopExamTimer();document.getElementById('ap
 function hardReset(){if(confirm('Réinitialiser ?')){localStorage.clear();location.reload(true);}}
 
 function initApp(){
+  // Enlever hidden de toutes les pages
+  document.querySelectorAll('.page').forEach(function(p){p.classList.remove('hidden');p.classList.remove('active');});
   var u=currentUser;
   document.getElementById('nav-avatar').textContent=u.initiales;
   document.getElementById('nav-name').textContent=u.nom;
@@ -43,9 +45,10 @@ function goTo(page){
   if(examState&&page!=='examens'){if(!confirm('Quitter l\'examen ?'))return;stopExam();}
   document.querySelectorAll('.page').forEach(function(p){p.classList.remove('active');});
   document.querySelectorAll('.nav-link').forEach(function(l){l.classList.remove('active');});
-  var el=document.getElementById('page-'+page);if(el)el.classList.add('active');
+  var el=document.getElementById('page-'+page);
+  if(el){el.classList.remove('hidden');el.classList.add('active');}
   document.querySelectorAll('.nav-link[data-page="'+page+'"]').forEach(function(l){l.classList.add('active');});
-  var r={accueil:renderAccueil,cours:renderCours,exercices:renderExercices,travaux:renderTravaux,examens:renderExamens,resultats:renderResultats,'gestion-cours':renderGestionCours,'gestion-exercices':renderGestionExercices,'gestion-travaux':renderGestionTravaux,'gestion-eleves':renderGestionEleves};
+  var r={accueil:renderAccueil,cours:renderCours,exercices:renderExercices,travaux:renderTravaux,examens:renderExamens,resultats:renderResultats,outils:renderOutils,'gestion-outils':renderGestionOutils,'gestion-cours':renderGestionCours,'gestion-exercices':renderGestionExercices,'gestion-travaux':renderGestionTravaux,'gestion-eleves':renderGestionEleves};
   if(r[page])r[page]();
 }
 
@@ -88,7 +91,25 @@ async function renderCours(){
   loading('cours-list');
   try{
     var all=await SB.get('cours');
-    var cours=all.filter(function(c){return!coursFilter||c.titre.toLowerCase().includes(coursFilter)||(c.matiere&&c.matiere.toLowerCase().includes(coursFilter));});
+    var classeColors={'Toutes':'var(--brown)','2nde Bac Pro':'var(--green)','1ère Bac Pro':'var(--blue)','Terminale Bac Pro':'var(--red)'};
+    var aujourd_hui=new Date().toISOString().slice(0,10);
+    // Filtrer par classe de l'élève (prof voit tout)
+    var cours=all.filter(function(c){
+      if(currentUser.role==='prof') return true;
+      // Vérifier la date de visibilité
+      if(c.visible_from&&c.visible_from>aujourd_hui) return false;
+      if(!c.classe||c.classe==='Toutes') return true;
+      return c.classe===currentUser.classe;
+    }).filter(function(c){
+      return!coursFilter||c.titre.toLowerCase().includes(coursFilter)||(c.matiere&&c.matiere.toLowerCase().includes(coursFilter));
+    });
+    // Trier par classe puis alphabétiquement
+    var ordreClasse={'Toutes':0,'2nde Bac Pro':1,'1ère Bac Pro':2,'Terminale Bac Pro':3};
+    cours.sort(function(a,b){
+      var oa=ordreClasse[a.classe]||0,ob=ordreClasse[b.classe]||0;
+      if(oa!==ob)return oa-ob;
+      return(a.titre||'').localeCompare(b.titre||'','fr');
+    });
     var byMatiere={};
     cours.forEach(function(c){if(!byMatiere[c.matiere])byMatiere[c.matiere]=[];byMatiere[c.matiere].push(c);});
     var colors={'Technologie professionnelle':'var(--blue-light)','Sciences appliquées':'var(--green-light)','Gestion & économie':'var(--orange-light)','Arts appliqués':'#FDF0F7','PSE':'#F5F0FD'};
@@ -99,7 +120,15 @@ async function renderCours(){
       byMatiere[mat].forEach(function(c){
         var prog=DB.getProgressionCours(currentUser.id,c.id);
         var pct=prog?prog.pct:0;
-        html+='<div class="list-row" onclick="openCours(\''+c.id+'\')" style="cursor:pointer"><div class="list-row-icon" style="background:'+(colors[c.matiere]||'var(--cream-dark)')+'">'+typeEmoji(c.type)+'</div><div class="list-row-info"><div class="list-row-title">'+c.titre+(c.nouveau?' <span class="tag tag-new">Nouveau</span>':'')+'</div><div class="list-row-sub">'+typeLabel(c.type)+(c.description?' · '+String(c.description).slice(0,60)+'…':'')+'</div>'+(currentUser.role==='eleve'?'<div class="progress-bar" style="margin-top:6px"><div class="progress-fill" style="width:'+pct+'%"></div></div>':'')+'</div><span style="font-size:11px;color:var(--text-light)">'+formatDate(c.date)+'</span></div>';
+        var classeBadge=currentUser.role==='prof'&&c.classe&&c.classe!=='Toutes'?'<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--cream-dark);color:'+(classeColors[c.classe]||'var(--text-light)')+';font-weight:600;margin-left:6px">'+c.classe+'</span>':'';
+        var programmeBadge=currentUser.role==='prof'&&c.visible_from&&c.visible_from>aujourd_hui?'<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--orange-light);color:var(--orange);font-weight:600;margin-left:6px">⏳ Visible le '+formatDate(c.visible_from)+'</span>':'';
+        html+='<div class="list-row" onclick="openCours(\''+c.id+'\')" style="cursor:pointer">'+
+          '<div class="list-row-icon" style="background:'+(colors[c.matiere]||'var(--cream-dark)')+'">'+typeEmoji(c.type)+'</div>'+
+          '<div class="list-row-info">'+
+          '<div class="list-row-title">'+c.titre+(c.nouveau?' <span class="tag tag-new">Nouveau</span>':'')+classeBadge+programmeBadge+'</div>'+
+          '<div class="list-row-sub">'+typeLabel(c.type)+(c.description?' · '+String(c.description).slice(0,60)+'…':'')+'</div>'+
+          (currentUser.role==='eleve'?'<div class="progress-bar" style="margin-top:6px"><div class="progress-fill" style="width:'+pct+'%"></div></div>':'')+
+          '</div><span style="font-size:11px;color:var(--text-light)">'+formatDate(c.date)+'</span></div>';
       });
       html+='</div>';
     }
@@ -125,7 +154,13 @@ async function renderExercices(){
   loading('exercices-grid');
   try{
     var all=await SB.get('exercices');
-    var exercices=all.filter(function(e){return e.type==='exercice';});
+    var aujourd_hui=new Date().toISOString().slice(0,10);
+    var exercices=all.filter(function(e){
+      if(currentUser.role==='prof') return e.type==='exercice';
+      if(e.type!=='exercice') return false;
+      if(e.visible_from&&e.visible_from>aujourd_hui) return false;
+      return true;
+    });
     document.getElementById('exercices-grid').innerHTML=exercices.map(function(e){
       var qs=Array.isArray(e.questions)?e.questions:(e.questions?JSON.parse(e.questions):[]);
       var res=DB.getResultatsEleve(currentUser.id).find(function(r){return r.exerciceId===e.id;});
@@ -137,12 +172,33 @@ async function renderExercices(){
 async function startExercice(id){
   try{
     var ex=await SB.getById('exercices',id);if(!ex)return;
-    quizQuestions=Array.isArray(ex.questions)?ex.questions:JSON.parse(ex.questions);
-    quizIndex=0;quizScore=0;quizAnswered=false;
+    var qs=Array.isArray(ex.questions)?ex.questions:(ex.questions?JSON.parse(ex.questions):[]);
+    quizQuestions=qs;quizIndex=0;quizScore=0;quizAnswered=false;
+    document.getElementById('exercices-home').classList.remove('active');
     document.getElementById('exercices-home').classList.add('hidden');
     document.getElementById('exercice-player').classList.remove('hidden');
+
+    // Si fichier joint sans questions → afficher directement le fichier
+    if(ex.fileData && qs.length===0){
+      document.getElementById('exercice-player').innerHTML='<div class="quiz-player"><div style="margin-bottom:16px"><h2 class="section-title">'+ex.titre+'</h2><p style="color:var(--text-mid);font-size:13px">'+ex.matiere+'</p></div>'+(ex.fileMime&&ex.fileMime.startsWith('image/')?'<img src="'+ex.fileData+'" style="max-width:100%;border-radius:var(--radius)">':ex.fileMime==='application/pdf'?'<iframe src="'+ex.fileData+'" style="width:100%;height:500px;border:none;border-radius:var(--radius)"></iframe>':'<div style="text-align:center;padding:32px"><div style="font-size:48px">📄</div><div style="margin:12px 0">'+ex.fileName+'</div><a href="'+ex.fileData+'" download="'+ex.fileName+'" class="btn-primary" style="text-decoration:none">⬇ Télécharger</a></div>')+'<div style="margin-top:16px"><button class="btn-secondary" onclick="renderExercices()">← Retour</button></div></div>';
+      return;
+    }
+
+    // Si fichier joint ET questions → afficher le fichier puis les questions
+    if(ex.fileData && qs.length>0){
+      document.getElementById('exercice-player').innerHTML='<div class="quiz-player"><div style="margin-bottom:16px"><h2 class="section-title">'+ex.titre+'</h2><p style="color:var(--text-mid);font-size:13px">'+ex.matiere+' · Document joint</p>'+(ex.fileMime==='application/pdf'?'<iframe src="'+ex.fileData+'" style="width:100%;height:300px;border:none;border-radius:var(--radius);margin-top:10px"></iframe>':ex.fileMime&&ex.fileMime.startsWith('image/')?'<img src="'+ex.fileData+'" style="max-width:100%;border-radius:var(--radius);margin-top:10px">':'<a href="'+ex.fileData+'" download="'+ex.fileName+'" class="btn-gold btn-sm" style="text-decoration:none;display:inline-block;margin-top:10px">📎 Télécharger le document</a>')+'</div><button class="btn-primary" onclick="startQuizPart(\''+id+'\')">Commencer le QCM →</button><button class="btn-secondary" onclick="renderExercices()" style="margin-left:8px">← Retour</button></div>';
+      return;
+    }
+
     renderQuizQuestion(ex,id);
-  }catch(e){showToast('Erreur','error');}
+  }catch(e){console.error(e);showToast('Erreur','error');}
+}
+
+async function startQuizPart(id){
+  var ex=await SB.getById('exercices',id);
+  var qs=Array.isArray(ex.questions)?ex.questions:JSON.parse(ex.questions);
+  quizQuestions=qs;quizIndex=0;quizScore=0;quizAnswered=false;
+  renderQuizQuestion(ex,id);
 }
 
 function renderQuizQuestion(ex,exId){
@@ -178,12 +234,25 @@ async function renderTravaux(){
     var rendus=await SB.get('rendus');
     var html='';
     if(u.role==='eleve'){
-      var mesRendus=rendus.filter(function(r){return r.eleveId===u.id;});
-      var aFaire=devoirs.filter(function(d){return!mesRendus.find(function(r){return r.devoirId===d.id;});});
-      var faits=devoirs.filter(function(d){return mesRendus.find(function(r){return r.devoirId===d.id;});});
-      if(aFaire.length){html+='<h2 class="section-title" style="margin-bottom:12px">Devoirs à rendre</h2>';aFaire.forEach(function(d){var late=new Date(d.deadline)<new Date();html+='<div class="devoir-card"><div class="devoir-card-header"><div><div class="devoir-card-title">'+d.titre+'</div><div class="devoir-card-meta">Avant le '+formatDate(d.deadline)+'</div></div><span class="tag '+(late?'tag-urgent':'')+'" style="'+(!late?'background:var(--green-light);color:var(--green)':'')+'">'+(late?'En retard':'À rendre')+'</span></div><div class="devoir-card-consignes">'+d.consignes+'</div><div class="upload-zone" onclick="simulateUpload(\''+d.id+'\')"><div class="upload-zone-icon">📤</div><div>Cliquez pour déposer</div></div></div>';});}
-      if(faits.length){html+='<h2 class="section-title" style="margin:24px 0 12px">Travaux rendus</h2>';faits.forEach(function(d){var rendu=mesRendus.find(function(r){return r.devoirId===d.id;});html+='<div class="devoir-card"><div class="devoir-card-header"><div><div class="devoir-card-title">'+d.titre+'</div><div class="devoir-card-meta">Rendu le '+formatDate(rendu.date)+'</div></div>'+(rendu.note!==null?'<span class="note-badge" style="color:'+(rendu.note>=10?'var(--green)':'var(--red)')+'">'+rendu.note+'/20</span>':'<span class="tag" style="background:var(--orange-light);color:var(--orange)">En correction</span>')+'</div>'+(rendu.commentaire?'<div class="commentaire-box"><div class="commentaire-label">Commentaire</div>'+rendu.commentaire+'</div>':'')+'</div>';});}
+      var mesRendus=rendus.filter(function(r){return String(r.eleveId)===String(u.id);});
+      var aFaire=devoirs.filter(function(d){return!mesRendus.find(function(r){return String(r.devoirId)===String(d.id);});});
+      var faits=devoirs.filter(function(d){return mesRendus.find(function(r){return String(r.devoirId)===String(d.id);});});
+      if(aFaire.length){
+        html+='<h2 class="section-title" style="margin-bottom:12px">Devoirs à rendre</h2>';
+        aFaire.forEach(function(d){
+          var late=new Date(d.deadline)<new Date();
+          html+='<div class="devoir-card"><div class="devoir-card-header"><div><div class="devoir-card-title">'+d.titre+'</div><div class="devoir-card-meta">Avant le '+formatDate(d.deadline)+'</div></div><span class="tag '+(late?'tag-urgent':'')+'" style="'+(!late?'background:var(--green-light);color:var(--green)':'')+'">'+(late?'En retard':'À rendre')+'</span></div><div class="devoir-card-consignes">'+d.consignes+'</div>'+(d.url?'<div style="margin-bottom:10px"><a href="'+d.url+'" target="_blank" class="btn-gold btn-sm" style="text-decoration:none;display:inline-block">🔗 Ouvrir le lien</a></div>':'')+(d.fileData?'<div style="margin-bottom:10px"><a href="'+d.fileData+'" download="'+d.fileName+'" class="btn-gold btn-sm" style="text-decoration:none;display:inline-block">📎 Télécharger le document</a></div>':'')+'<div class="upload-zone" onclick="ouvrirUploadEleve(\''+d.id+'\')"><div class="upload-zone-icon">📤</div><div style="font-weight:500">Déposer votre travail</div><div style="font-size:12px;margin-top:4px;color:var(--text-light)">PDF, Word, image – max 4 Mo</div></div></div>';
+        });
+      }
+      if(faits.length){
+        html+='<h2 class="section-title" style="margin:24px 0 12px">Travaux rendus</h2>';
+        faits.forEach(function(d){
+          var rendu=mesRendus.find(function(r){return String(r.devoirId)===String(d.id);});
+          html+='<div class="devoir-card"><div class="devoir-card-header"><div><div class="devoir-card-title">'+d.titre+'</div><div class="devoir-card-meta">✅ Rendu le '+formatDate(rendu.date)+(rendu.fileName?' · 📎 '+rendu.fileName:'')+'</div></div>'+(rendu.note!==null?'<span class="note-badge" style="color:'+(rendu.note>=10?'var(--green)':'var(--red)')+'">'+rendu.note+'/20</span>':'<span class="tag" style="background:var(--orange-light);color:var(--orange)">En correction</span>')+'</div>'+(rendu.commentaire?'<div class="commentaire-box"><div class="commentaire-label">💬 Commentaire du professeur</div>'+rendu.commentaire+'</div>':'')+'</div>';
+        });
+      }
       if(!devoirs.length)html=emptyState('📭','Aucun devoir assigné');
+      if(devoirs.length&&!aFaire.length&&!faits.length)html=emptyState('✅','Tous vos devoirs sont rendus !');
     }else{
       html+='<div style="display:flex;justify-content:flex-end;margin-bottom:16px"><button class="btn-primary" onclick="showModal(\'modal-add-devoir\')">+ Créer un devoir</button></div>';
       devoirs.forEach(function(d){var nb=rendus.filter(function(r){return r.devoirId===d.id;}).length;html+='<div class="devoir-card"><div class="devoir-card-header"><div><div class="devoir-card-title">'+d.titre+'</div><div class="devoir-card-meta">Avant le '+formatDate(d.deadline)+' · '+nb+' rendu(s)</div></div><button class="btn-danger btn-sm" onclick="deleteDevoir(\''+d.id+'\')">Supprimer</button></div><div class="devoir-card-consignes">'+d.consignes+'</div></div>';});
@@ -193,8 +262,36 @@ async function renderTravaux(){
   }catch(e){showErr('travaux-content','Erreur chargement travaux.');}
 }
 
-async function simulateUpload(devoirId){
-  try{await SB.insert('rendus',{devoirId:devoirId,eleveId:currentUser.id,date:new Date().toISOString().slice(0,10),note:null,commentaire:null,fileName:'travail_'+currentUser.id+'.pdf'});showToast('✅ Travail déposé !','success');renderTravaux();}catch(e){showToast('Erreur dépôt','error');}
+function ouvrirUploadEleve(devoirId) {
+  var input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.pdf,.doc,.docx,.png,.jpg,.jpeg,.mp4,.mov';
+  input.onchange = function() {
+    if (!input.files[0]) return;
+    var file = input.files[0];
+    if (file.size > 20*1024*1024) { showToast('Fichier trop lourd (max 20 Mo)', 'error'); return; }
+    showToast('⏳ Envoi en cours…');
+    var path = 'rendus/' + devoirId + '_' + currentUser.id + '_' + Date.now() + '_' + file.name.replace(/\s/g,'_');
+    SB.uploadFile(file, path).then(function(fileUrl) {
+      return SB.insert('rendus', {
+        devoirId: devoirId,
+        eleveId: currentUser.id,
+        date: new Date().toISOString().slice(0,10),
+        note: null,
+        commentaire: null,
+        fileName: file.name,
+        fileData: fileUrl,
+        fileMime: file.type
+      });
+    }).then(function() {
+      showToast('✅ Travail déposé !', 'success');
+      renderTravaux();
+    }).catch(function(e) {
+      console.error(e);
+      showToast('Erreur dépôt : ' + e.message, 'error');
+    });
+  };
+  input.click();
 }
 
 async function deleteDevoir(id){if(!confirm('Supprimer ?'))return;try{await SB.delete('devoirs',id);renderTravaux();showToast('Devoir supprimé');}catch(e){showToast('Erreur','error');}}
@@ -206,20 +303,44 @@ async function renderExamens(){
   loading('examens-grid');
   try{
     var all=await SB.get('exercices');
-    var examens=all.filter(function(e){return e.type==='examen';});
+    var aujourd_hui=new Date().toISOString().slice(0,10);
+    var examens=all.filter(function(e){
+      if(currentUser.role==='prof') return e.type==='examen';
+      if(e.type!=='examen') return false;
+      if(e.visible_from&&e.visible_from>aujourd_hui) return false;
+      return true;
+    });
     document.getElementById('examens-grid').innerHTML=examens.map(function(e){
       var qs=Array.isArray(e.questions)?e.questions:(e.questions?JSON.parse(e.questions):[]);
-      var done=DB.getResultatsEleve(currentUser.id).find(function(r){return r.exerciceId===e.id;});
-      return'<div class="resource-card" onclick="'+(currentUser.role==='eleve'?'confirmStartExam(\''+e.id+'\')':'showToast(\'Accès via Gérer les exercices\')')+'"><div class="card-emoji">📋</div><span class="card-badge badge-examen">Examen</span><div class="card-title">'+e.titre+'</div><div class="card-sub">'+e.matiere+'</div><div class="card-sub">⏱ '+e.duree+' min · '+qs.length+' questions</div>'+(done?'<div class="card-sub" style="color:var(--green)">✅ '+done.score+'/'+done.total+'</div>':'')+'</div>';
+      var done=DB.getResultatsEleve(currentUser.id).find(function(r){return String(r.exerciceId)===String(e.id);});
+      var onclick=currentUser.role==='eleve'?(done?'showToast(\'⛔ Examen déjà passé – résultat enregistré\',\'error\')':'confirmStartExam(\''+e.id+'\')'):'previewExamen(\''+e.id+'\')';
+      return'<div class="resource-card" onclick="'+onclick+'" style="'+(done&&currentUser.role==='eleve'?'opacity:0.7;cursor:not-allowed':'')+'">'+
+        '<div class="card-emoji">'+(done&&currentUser.role==='eleve'?'🔒':'📋')+'</div>'+
+        '<span class="card-badge badge-examen">Examen</span>'+
+        '<div class="card-title">'+e.titre+'</div>'+
+        '<div class="card-sub">'+e.matiere+'</div>'+
+        '<div class="card-sub">⏱ '+e.duree+' min · '+qs.length+' questions</div>'+
+        (currentUser.role==='prof'?'<div class="card-sub" style="color:var(--blue)">👁 Cliquer pour prévisualiser</div>':
+          done?'<div class="card-sub" style="color:var(--green)">✅ Passé – '+(done.total>1?((done.score/done.total)*20).toFixed(0)+'/20':'Participation enregistrée')+'</div>'+
+               '<div class="card-sub" style="color:var(--red);font-size:11px">🔒 Ne peut plus être recommencé</div>':
+          '<div class="card-sub" style="color:var(--text-light)">Non encore passé</div>')+
+        '</div>';
     }).join('')||emptyState('📋','Aucun examen disponible');
   }catch(e){showErr('examens-grid','Erreur chargement.');}
 }
 
 async function confirmStartExam(id){
   try{
-    pendingExamId=id;var ex=await SB.getById('exercices',id);
-    var qs=Array.isArray(ex.questions)?ex.questions:JSON.parse(ex.questions);
-    document.getElementById('exam-confirm-info').innerHTML='<div style="background:var(--red-light);border-radius:var(--radius);padding:16px;margin-bottom:16px;font-size:13px;color:#8B2020;line-height:1.7"><strong>'+ex.titre+'</strong><br>Durée : '+ex.duree+' min · '+qs.length+' questions<br>⚠️ Une fois démarré, vous ne pouvez plus naviguer.</div>';
+    pendingExamId=id;
+    var ex=await SB.getById('exercices',id);
+    var qs=Array.isArray(ex.questions)?ex.questions:(ex.questions?JSON.parse(ex.questions):[]);
+    // Vérifier si l'élève a déjà passé cet examen
+    var dejaPasse=DB.getResultatsEleve(currentUser.id).find(function(r){return String(r.exerciceId)===String(id);});
+    if(dejaPasse){
+      showToast('⛔ Vous avez déjà passé cet examen. Résultat enregistré.','error');
+      return;
+    }
+    document.getElementById('exam-confirm-info').innerHTML='<div style="background:var(--red-light);border-radius:var(--radius);padding:16px;margin-bottom:16px;font-size:13px;color:#8B2020;line-height:1.7"><strong>'+ex.titre+'</strong><br>Durée : '+ex.duree+' min · '+qs.length+' questions<br><br>⚠️ <strong>Règles importantes :</strong><br>• Ne quittez pas cette page pendant l\'examen<br>• Ne changez pas d\'onglet ou de fenêtre<br>• Tout changement de page sera détecté et l\'examen sera soumis automatiquement<br>• <strong>L\'examen ne peut être passé qu\'une seule fois</strong></div>';
     showModal('modal-confirm-exam');
   }catch(e){showToast('Erreur','error');}
 }
@@ -228,19 +349,122 @@ async function startExamConfirmed(){
   closeAllModals();
   try{
     var ex=await SB.getById('exercices',pendingExamId);if(!ex)return;
-    var qs=Array.isArray(ex.questions)?ex.questions:JSON.parse(ex.questions);
-    examState={id:pendingExamId,questions:qs,index:0,answers:[],remaining:ex.duree*60};
+    var qs=Array.isArray(ex.questions)?ex.questions:(ex.questions?JSON.parse(ex.questions):[]);
+    // Si pas de questions mais document joint → afficher le document directement
+    if(qs.length===0&&(ex.fileData||ex.url)){
+      examState={id:pendingExamId,questions:[],index:0,answers:[],remaining:ex.duree*60,triche:0,ex:ex};
+      document.getElementById('examens-home').classList.add('hidden');
+      document.getElementById('exam-player').classList.remove('hidden');
+      if(currentUser.role==='eleve'){
+        document.addEventListener('visibilitychange',detecterTriche);
+        window.addEventListener('blur',detecterTriche);
+      }
+      startExamTimer();
+      // Afficher le document avec chronomètre
+      var ressource='';
+      if(ex.fileData){
+        if(ex.fileMime==='application/pdf') ressource='<iframe src="'+ex.fileData+'" style="width:100%;height:450px;border:none;border-radius:var(--radius)"></iframe>';
+        else if(ex.fileMime&&ex.fileMime.startsWith('image/')) ressource='<img src="'+ex.fileData+'" style="max-width:100%;border-radius:var(--radius)">';
+        else ressource='<a href="'+ex.fileData+'" download="'+ex.fileName+'" class="btn-primary" style="text-decoration:none;display:inline-block">📎 Télécharger le document</a>';
+      }
+      if(ex.url) ressource+='<div style="margin-top:12px"><a href="'+ex.url+'" target="_blank" class="btn-gold btn-sm" style="text-decoration:none;display:inline-block">🔗 Ouvrir la ressource</a></div>';
+      document.getElementById('exam-player').innerHTML=
+        '<div class="exam-topbar"><div><div class="exam-topbar-title">'+ex.titre+'</div><div class="exam-topbar-sub">Document à consulter – rendez votre travail sur papier</div></div><div class="exam-timer" id="exam-timer-display">--:--</div></div>'+
+        '<div class="quiz-player">'+
+        '<div style="background:var(--orange-light);border-radius:var(--radius);padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--orange)">⚠️ Consultez le document ci-dessous. Répondez sur papier. Cliquez "Terminer" quand vous avez fini.</div>'+
+        ressource+
+        '<div style="margin-top:20px;display:flex;gap:10px">'+
+        '<button class="btn-primary" onclick="finishExam(false)">✅ Terminer l\'examen</button>'+
+        '<button class="btn-danger btn-sm" onclick="if(confirm(\'Abandonner ?\'))stopExam()">Abandonner</button>'+
+        '</div></div>';
+      updateTimerDisplay();
+      return;
+    }
+    examState={id:pendingExamId,questions:qs,index:0,answers:[],remaining:ex.duree*60,triche:0,ex:ex};
     document.getElementById('examens-home').classList.add('hidden');
     document.getElementById('exam-player').classList.remove('hidden');
+    if(currentUser.role==='eleve'){
+      document.addEventListener('visibilitychange',detecterTriche);
+      window.addEventListener('blur',detecterTriche);
+    }
     renderExamQuestion();startExamTimer();
   }catch(e){showToast('Erreur','error');}
+}
+
+async function previewExamen(id){
+  try{
+    var ex=await SB.getById('exercices',id);if(!ex)return;
+    var qs=Array.isArray(ex.questions)?ex.questions:(ex.questions?JSON.parse(ex.questions):[]);
+    document.getElementById('examens-home').classList.add('hidden');
+    document.getElementById('exam-player').classList.remove('hidden');
+    var ressource='';
+    if(ex.fileData){
+      if(ex.fileMime==='application/pdf') ressource='<iframe src="'+ex.fileData+'" style="width:100%;height:250px;border:none;border-radius:var(--radius);margin-bottom:16px"></iframe>';
+      else if(ex.fileMime&&ex.fileMime.startsWith('image/')) ressource='<img src="'+ex.fileData+'" style="max-width:100%;border-radius:var(--radius);margin-bottom:16px">';
+      else ressource='<a href="'+ex.fileData+'" download="'+ex.fileName+'" class="btn-gold btn-sm" style="text-decoration:none;display:inline-block;margin-bottom:16px">📎 '+ex.fileName+'</a>';
+    }
+    if(ex.url) ressource+='<div style="margin-bottom:16px"><a href="'+ex.url+'" target="_blank" class="btn-gold btn-sm" style="text-decoration:none;display:inline-block">🔗 Lien ressource</a></div>';
+    document.getElementById('exam-player').innerHTML=
+      '<div style="background:var(--blue-light);border-radius:var(--radius-lg);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between">'+
+      '<div><div style="font-weight:600;color:var(--blue)">👁 Prévisualisation professeur – '+ex.titre+'</div>'+
+      '<div style="font-size:12px;color:var(--blue);margin-top:2px">'+ex.matiere+' · '+ex.duree+' min · '+qs.length+' questions</div></div>'+
+      '<button class="btn-secondary btn-sm" onclick="stopExam()">← Retour</button></div>'+
+      '<div class="quiz-player">'+ressource+
+      (qs.length?qs.map(function(q,i){var letters=['A','B','C','D'];return'<div class="quiz-question-card" style="margin-bottom:12px"><div style="font-size:11px;color:var(--text-light);margin-bottom:8px">Question '+(i+1)+'</div><div class="quiz-q-text" style="font-size:16px">'+q.q+'</div><div class="quiz-opts">'+q.opts.map(function(o,j){return'<div class="quiz-opt '+(j===q.correct?'correct disabled':'disabled')+'"><div class="opt-letter">'+letters[j]+'</div><span>'+o+'</span></div>';}).join('')+'</div>'+(q.explication?'<div style="margin-top:8px;font-size:12px;color:var(--text-mid);background:var(--cream-dark);padding:8px;border-radius:var(--radius)">💡 '+q.explication+'</div>':'')+'</div>';}).join(''):emptyState('📋','Aucune question QCM – document joint uniquement'))+
+      '</div>';
+  }catch(e){showToast('Erreur','error');}
+}
+
+function detecterTriche(){
+  if(!examState)return;
+  if(document.hidden||document.visibilityState==='hidden'){
+    examState.triche++;
+    if(examState.triche>=2){
+      finishExam(false, true);
+    } else {
+      showToast('⚠️ Avertissement : ne quittez pas la page ! ('+examState.triche+'/2)', 'error');
+    }
+  }
 }
 
 function renderExamQuestion(){
   if(!examState)return;
   if(examState.index>=examState.questions.length){finishExam();return;}
-  var q=examState.questions[examState.index];var letters=['A','B','C','D'];
-  document.getElementById('exam-player').innerHTML='<div class="exam-topbar"><div><div class="exam-topbar-title">Examen en cours</div><div class="exam-topbar-sub">Question '+(examState.index+1)+'/'+examState.questions.length+'</div></div><div class="exam-timer" id="exam-timer-display">--:--</div></div><div class="quiz-player"><div class="progress-bar" style="margin-bottom:20px"><div class="progress-fill" style="width:'+((examState.index/examState.questions.length)*100)+'%"></div></div><div class="quiz-question-card"><div class="quiz-q-text">'+q.q+'</div><div class="quiz-opts" id="exam-opts">'+q.opts.map(function(o,i){return'<div class="quiz-opt" onclick="selectExamOpt('+i+')"><div class="opt-letter">'+letters[i]+'</div><span>'+o+'</span></div>';}).join('')+'</div></div><div style="display:flex;gap:10px;margin-top:16px"><button class="btn-primary" onclick="nextExamQuestion()">'+(examState.index<examState.questions.length-1?'Question suivante →':'Terminer')+'</button><button class="btn-danger btn-sm" onclick="if(confirm(\'Abandonner ?\'))stopExam()">Abandonner</button></div></div>';
+  var q=examState.questions[examState.index];
+  var letters=['A','B','C','D'];
+  var ex=examState.ex||{};
+
+  // Afficher document ou lien si présent
+  var ressource='';
+  if(ex.fileData){
+    if(ex.fileMime==='application/pdf'){
+      ressource='<div style="margin-bottom:16px"><iframe src="'+ex.fileData+'" style="width:100%;height:250px;border:none;border-radius:var(--radius)"></iframe></div>';
+    } else if(ex.fileMime&&ex.fileMime.startsWith('image/')){
+      ressource='<div style="margin-bottom:16px"><img src="'+ex.fileData+'" style="max-width:100%;border-radius:var(--radius)"></div>';
+    } else {
+      ressource='<div style="margin-bottom:16px"><a href="'+ex.fileData+'" download="'+ex.fileName+'" class="btn-gold btn-sm" style="text-decoration:none;display:inline-block">📎 Télécharger le document</a></div>';
+    }
+  }
+  if(ex.url){
+    ressource+='<div style="margin-bottom:16px"><a href="'+ex.url+'" target="_blank" class="btn-gold btn-sm" style="text-decoration:none;display:inline-block">🔗 Ouvrir la ressource</a></div>';
+  }
+
+  // Avertissement triche
+  var trichemsg=examState.triche>0?'<div style="background:var(--red-light);color:var(--red);padding:8px 12px;border-radius:var(--radius);font-size:12px;margin-bottom:12px;font-weight:500">⚠️ Avertissement '+examState.triche+'/2 – Ne quittez pas la page !</div>':'';
+
+  document.getElementById('exam-player').innerHTML=
+    '<div class="exam-topbar"><div><div class="exam-topbar-title">'+ex.titre+'</div><div class="exam-topbar-sub">Question '+(examState.index+1)+'/'+examState.questions.length+'</div></div><div class="exam-timer" id="exam-timer-display">--:--</div></div>'+
+    '<div class="quiz-player">'+
+    trichemsg+
+    '<div class="progress-bar" style="margin-bottom:20px"><div class="progress-fill" style="width:'+((examState.index/examState.questions.length)*100)+'%"></div></div>'+
+    ressource+
+    '<div class="quiz-question-card"><div class="quiz-q-text">'+q.q+'</div><div class="quiz-opts" id="exam-opts">'+
+    q.opts.map(function(o,i){return'<div class="quiz-opt" onclick="selectExamOpt('+i+')"><div class="opt-letter">'+letters[i]+'</div><span>'+o+'</span></div>';}).join('')+
+    '</div></div>'+
+    '<div style="display:flex;gap:10px;margin-top:16px">'+
+    '<button class="btn-primary" onclick="nextExamQuestion()">'+(examState.index<examState.questions.length-1?'Question suivante →':'Terminer l\'examen')+'</button>'+
+    '<button class="btn-danger btn-sm" onclick="if(confirm(\'Abandonner l\'examen ?\'))stopExam()">Abandonner</button>'+
+    '</div></div>';
   updateTimerDisplay();
 }
 
@@ -248,17 +472,144 @@ function selectExamOpt(i){document.querySelectorAll('#exam-opts .quiz-opt').forE
 function nextExamQuestion(){examState.index++;renderExamQuestion();}
 function startExamTimer(){updateTimerDisplay();examTimerInterval=setInterval(function(){examState.remaining--;updateTimerDisplay();if(examState.remaining<=0){clearInterval(examTimerInterval);finishExam(true);}},1000);}
 function updateTimerDisplay(){var el=document.getElementById('exam-timer-display');if(!el||!examState)return;var m=Math.floor(examState.remaining/60),s=examState.remaining%60;el.textContent=String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');el.classList.toggle('warning',examState.remaining<120);}
-function stopExam(){clearInterval(examTimerInterval);examTimerInterval=null;examState=null;document.getElementById('examens-home').classList.remove('hidden');document.getElementById('exam-player').classList.add('hidden');renderExamens();}
-function stopExamTimer(){clearInterval(examTimerInterval);examTimerInterval=null;examState=null;}
-function finishExam(timeout){clearInterval(examTimerInterval);examTimerInterval=null;var score=0;examState.questions.forEach(function(q,i){if(examState.answers[i]===q.correct)score++;});DB.addResultat(currentUser.id,examState.id,score,examState.questions.length,'examen');var note=((score/examState.questions.length)*20).toFixed(1);document.getElementById('exam-player').innerHTML='<div style="max-width:500px"><div class="quiz-results"><div class="result-emoji">'+(timeout?'⏰':score>=examState.questions.length*0.6?'🎓':'📚')+'</div><div class="result-score">'+score+'/'+examState.questions.length+'</div><div class="result-sub">Note : <strong>'+note+'/20</strong></div><div style="margin-top:24px"><button class="btn-primary" onclick="stopExam()">Retour</button></div></div></div>';examState=null;showToast('📋 Examen terminé – Note : '+note+'/20','success');}
+function stopExam(){
+  clearInterval(examTimerInterval);examTimerInterval=null;
+  document.removeEventListener('visibilitychange',detecterTriche);
+  window.removeEventListener('blur',detecterTriche);
+  examState=null;
+  document.getElementById('examens-home').classList.remove('hidden');
+  document.getElementById('exam-player').classList.add('hidden');
+  renderExamens();
+}
+function stopExamTimer(){
+  clearInterval(examTimerInterval);examTimerInterval=null;
+  document.removeEventListener('visibilitychange',detecterTriche);
+  window.removeEventListener('blur',detecterTriche);
+  examState=null;
+}
+function finishExam(timeout,triche){
+  clearInterval(examTimerInterval);examTimerInterval=null;
+  document.removeEventListener('visibilitychange',detecterTriche);
+  window.removeEventListener('blur',detecterTriche);
+  var questions=examState.questions||[];
+  var score=0;
+  questions.forEach(function(q,i){if(examState.answers[i]===q.correct)score++;});
+  var total=questions.length;
+  // Si pas de questions (document seul) → enregistrer juste la participation
+  if(total===0){
+    DB.addResultat(currentUser.id,examState.id,0,1,'examen');
+    document.getElementById('exam-player').innerHTML=
+      '<div style="max-width:500px"><div class="quiz-results">'+
+      '<div class="result-emoji">✅</div>'+
+      '<div class="result-score" style="font-size:32px">Terminé !</div>'+
+      '<div class="result-sub">Votre participation a été enregistrée.</div>'+
+      (triche?'<div style="margin-top:8px;font-size:13px;color:var(--red);font-weight:500">🚨 Soumis automatiquement – changement de page détecté</div>':'')+
+      '<div style="margin-top:24px"><button class="btn-primary" onclick="stopExam()">Retour</button></div>'+
+      '</div></div>';
+    examState=null;
+    showToast('✅ Examen terminé !','success');
+    return;
+  }
+  DB.addResultat(currentUser.id,examState.id,score,total,'examen');
+  var note=((score/total)*20).toFixed(1);
+  var raison=triche?'🚨 Soumis automatiquement – changement de page détecté':timeout?'⏰ Temps écoulé':'';
+  document.getElementById('exam-player').innerHTML=
+    '<div style="max-width:500px"><div class="quiz-results">'+
+    '<div class="result-emoji">'+(triche?'🚨':timeout?'⏰':score>=total*0.6?'🎓':'📚')+'</div>'+
+    '<div class="result-score">'+score+'/'+total+'</div>'+
+    '<div class="result-sub">Note : <strong>'+note+'/20</strong></div>'+
+    (raison?'<div style="margin-top:8px;font-size:13px;color:var(--red);font-weight:500">'+raison+'</div>':'')+
+    '<div style="margin-top:8px;font-size:13px;color:var(--text-mid)">Résultats transmis à votre professeur.</div>'+
+    '<div style="margin-top:24px"><button class="btn-primary" onclick="stopExam()">Retour</button></div>'+
+    '</div></div>';
+  examState=null;
+  showToast('📋 Examen terminé – Note : '+note+'/20','success');
+}
 
 // RÉSULTATS
 function renderResultats(){
   var resultats=DB.getResultatsEleve(currentUser.id);
-  if(!resultats.length){document.getElementById('resultats-content').innerHTML=emptyState('📊','Aucun résultat pour l\'instant');return;}
-  var notes=resultats.map(function(r){return(r.score/r.total)*20;});
-  var moy=notes.length?(notes.reduce(function(a,b){return a+b;},0)/notes.length).toFixed(1):'–';
-  document.getElementById('resultats-content').innerHTML='<div class="stats-row" style="margin-bottom:28px">'+stat('📊',moy,'Moyenne','--brown')+stat('📝',resultats.length,'Exercices réalisés','--blue')+'</div><table class="result-detail-table"><thead><tr><th>Exercice</th><th>Score</th><th>Note</th><th>Date</th></tr></thead><tbody>'+resultats.slice().reverse().map(function(r){var n=((r.score/r.total)*20).toFixed(1);return'<tr><td>'+r.exerciceId+'</td><td>'+r.score+'/'+r.total+'</td><td style="color:'+(parseFloat(n)>=10?'var(--green)':'var(--red)')+'">'+n+'</td><td style="font-size:12px;color:var(--text-light)">'+formatDate(r.date)+'</td></tr>';}).join('')+'</tbody></table>';
+  loading('resultats-content');
+  SB.get('rendus').then(function(tousRendus){
+    return SB.get('devoirs').then(function(devoirs){
+      var rendusNotes=tousRendus.filter(function(r){return String(r.eleveId)===String(currentUser.id)&&r.note!==null;});
+      if(!resultats.length&&!rendusNotes.length){document.getElementById('resultats-content').innerHTML=emptyState('📊','Aucun résultat pour l\'instant. Faites vos premiers exercices !');return;}
+      var notesEx=resultats.map(function(r){return(r.score/r.total)*20;});
+      var notesTravaux=rendusNotes.map(function(r){return r.note;});
+      var toutesNotes=notesEx.concat(notesTravaux);
+      var moy=toutesNotes.length?(toutesNotes.reduce(function(a,b){return a+b;},0)/toutesNotes.length).toFixed(1):'–';
+      var html='<div class="stats-row" style="margin-bottom:28px">'+stat('📊',moy,'Moyenne générale','--brown')+stat('📝',resultats.length,'Exercices réalisés','--blue')+stat('📤',rendusNotes.length,'Travaux notés','--orange')+'</div>';
+      if(resultats.length){
+        html+='<h2 class="section-title" style="margin-bottom:12px">Exercices & examens</h2>';
+        html+='<table class="result-detail-table" style="margin-bottom:24px"><thead><tr><th>Exercice</th><th>Score</th><th>Note</th><th>Date</th></tr></thead><tbody>'+resultats.slice().reverse().map(function(r){var n=((r.score/r.total)*20).toFixed(1);return'<tr><td>'+r.exerciceId+'</td><td>'+r.score+'/'+r.total+'</td><td style="font-weight:600;color:'+(parseFloat(n)>=10?'var(--green)':'var(--red)')+'">'+n+'/20</td><td style="font-size:12px;color:var(--text-light)">'+formatDate(r.date)+'</td></tr>';}).join('')+'</tbody></table>';
+      }
+      if(rendusNotes.length){
+        html+='<h2 class="section-title" style="margin-bottom:12px">Travaux notés par le professeur</h2>';
+        html+='<table class="result-detail-table"><thead><tr><th>Devoir</th><th>Note</th><th>Commentaire</th><th>Date</th></tr></thead><tbody>'+rendusNotes.map(function(r){var d=devoirs.find(function(x){return String(x.id)===String(r.devoirId);});return'<tr><td style="font-weight:500">'+(d?d.titre:'Devoir')+'</td><td style="font-weight:600;color:'+(r.note>=10?'var(--green)':'var(--red)')+'">'+r.note+'/20</td><td style="font-size:12px;color:var(--text-mid)">'+(r.commentaire||'–')+'</td><td style="font-size:12px;color:var(--text-light)">'+formatDate(r.date)+'</td></tr>';}).join('')+'</tbody></table>';
+      }
+      document.getElementById('resultats-content').innerHTML=html;
+    });
+  }).catch(function(e){
+    console.error(e);
+    document.getElementById('resultats-content').innerHTML=emptyState('⚠️','Erreur chargement résultats');
+  });
+}
+
+// ===== BOÎTE À OUTILS =====
+var categorieColors={'Vie scolaire':'var(--blue-light)','Hygiène & Sécurité':'var(--green-light)','Fiches techniques':'var(--orange-light)','Réglementation':'#F5F0FD','Examens & diplômes':'var(--red-light)','Autre':'var(--cream-dark)'};
+var categorieEmojis={'Vie scolaire':'🏫','Hygiène & Sécurité':'🧼','Fiches techniques':'📋','Réglementation':'⚖️','Examens & diplômes':'🎓','Autre':'📄'};
+
+async function renderOutils(){
+  loading('outils-content');
+  try{
+    var outils=await SB.get('outils');
+    if(!outils.length){document.getElementById('outils-content').innerHTML=emptyState('🧰','Aucun document disponible pour l\'instant');return;}
+    var byCategorie={};
+    outils.forEach(function(o){if(!byCategorie[o.categorie])byCategorie[o.categorie]=[];byCategorie[o.categorie].push(o);});
+    for(var cat in byCategorie){byCategorie[cat].sort(function(a,b){return(a.titre||'').localeCompare(b.titre||'','fr');});}
+    var html='';
+    for(var cat in byCategorie){
+      html+='<div class="matiere-group"><div class="matiere-label">'+(categorieEmojis[cat]||'📄')+' '+cat+'</div>';
+      byCategorie[cat].forEach(function(o){
+        html+='<div class="list-row"><div class="list-row-icon" style="background:'+(categorieColors[o.categorie]||'var(--cream-dark)')+'">'+( categorieEmojis[o.categorie]||'📄')+'</div><div class="list-row-info"><div class="list-row-title">'+o.titre+'</div>'+(o.description?'<div class="list-row-sub">'+o.description+'</div>':'')+' </div><div class="list-row-actions">'+(o.fileData?'<button class="btn-primary btn-sm" onclick="previewFileRaw(\''+o.fileData+'\',\''+o.fileName+'\',\''+o.fileMime+'\')">👁 Consulter</button>':'')+(o.url?'<a href="'+o.url+'" target="_blank" class="btn-gold btn-sm" style="text-decoration:none">🔗 Ouvrir</a>':'')+'</div></div>';
+      });
+      html+='</div>';
+    }
+    document.getElementById('outils-content').innerHTML=html;
+  }catch(e){showErr('outils-content','Erreur chargement.');}
+}
+
+async function renderGestionOutils(){
+  loading('gestion-outils-content');
+  try{
+    var outils=await SB.get('outils');
+    document.getElementById('gestion-outils-content').innerHTML=outils.length?outils.map(function(o){
+      return'<div class="list-row"><div class="list-row-icon" style="background:'+(categorieColors[o.categorie]||'var(--cream-dark)')+'">'+( categorieEmojis[o.categorie]||'📄')+'</div><div class="list-row-info"><div class="list-row-title">'+o.titre+'</div><div class="list-row-sub">'+o.categorie+(o.description?' · '+o.description:'')+(o.fileName?' · <span style="color:var(--green)">📎 '+o.fileName+'</span>':'')+'</div></div><div class="list-row-actions">'+(o.fileData?'<button class="btn-gold btn-sm" onclick="previewFileRaw(\''+o.fileData+'\',\''+o.fileName+'\',\''+o.fileMime+'\')">👁 Voir</button>':'')+(o.url?'<a href="'+o.url+'" target="_blank" class="btn-secondary btn-sm" style="text-decoration:none">🔗</a>':'')+'<button class="btn-danger btn-sm" onclick="deleteOutil('+o.id+')">Supprimer</button></div></div>';
+    }).join(''):emptyState('🧰','Aucun document. Ajoutez-en un !');
+  }catch(e){showErr('gestion-outils-content','Erreur chargement.');}
+}
+
+var pendingOutilFile=null;
+
+async function addOutil(){
+  var titre=document.getElementById('no-titre').value.trim();
+  if(!titre){showToast('Veuillez saisir un titre','error');return;}
+  try{
+    var item={titre:titre,categorie:document.getElementById('no-categorie').value,description:document.getElementById('no-description').value||null,url:document.getElementById('no-url').value||null};
+    if(pendingOutilFile&&pendingOutilFile.file){
+      showToast('⏳ Upload en cours…');
+      var path='outils/'+Date.now()+'_'+pendingOutilFile.fileName.replace(/\s/g,'_');
+      var fileUrl=await SB.uploadFile(pendingOutilFile.file,path);
+      item.fileData=fileUrl;item.fileName=pendingOutilFile.fileName;item.fileMime=pendingOutilFile.fileMime;
+    }
+    await SB.insert('outils',item);
+    pendingOutilFile=null;closeAllModals();renderGestionOutils();showToast('✅ Document ajouté !','success');
+  }catch(e){console.error(e);showToast('Erreur ajout','error');}
+}
+
+async function deleteOutil(id){
+  if(!confirm('Supprimer ce document ?'))return;
+  try{await SB.delete('outils',id);renderGestionOutils();showToast('Document supprimé');}catch(e){showToast('Erreur','error');}
 }
 
 // PROF : GESTION COURS
@@ -277,8 +628,13 @@ async function addCours(){
   var titre=document.getElementById('nc-titre').value.trim();
   if(!titre){showToast('Veuillez saisir un titre','error');return;}
   try{
-    var item={titre:titre,matiere:document.getElementById('nc-matiere').value,type:document.getElementById('nc-type').value,url:document.getElementById('nc-url').value||'#',description:document.getElementById('nc-desc').value,date:new Date().toISOString().slice(0,10),nouveau:true};
-    if(pendingCoursFile){item.fileData=pendingCoursFile.fileData;item.fileName=pendingCoursFile.fileName;item.fileMime=pendingCoursFile.fileMime;}
+    var item={titre:titre,matiere:document.getElementById('nc-matiere').value,type:document.getElementById('nc-type').value,url:document.getElementById('nc-url').value||'#',description:document.getElementById('nc-desc').value,date:new Date().toISOString().slice(0,10),nouveau:true,classe:document.getElementById('nc-classe').value||'Toutes',visible_from:document.getElementById('nc-visible-from').value||null};
+    if(pendingCoursFile&&pendingCoursFile.file){
+      showToast('⏳ Upload en cours…');
+      var path='cours/'+Date.now()+'_'+pendingCoursFile.fileName.replace(/\s/g,'_');
+      var fileUrl=await SB.uploadFile(pendingCoursFile.file,path);
+      item.fileData=fileUrl;item.fileName=pendingCoursFile.fileName;item.fileMime=pendingCoursFile.fileMime;
+    }
     await SB.insert('cours',item);
     pendingCoursFile=null;closeAllModals();renderGestionCours();showToast('✅ Cours ajouté !','success');
   }catch(e){console.error(e);showToast('Erreur ajout cours : '+e.message,'error');}
@@ -288,8 +644,23 @@ async function addCours(){
 function readFileAsBase64(file){return new Promise(function(resolve,reject){var r=new FileReader();r.onload=function(e){resolve(e.target.result);};r.onerror=reject;r.readAsDataURL(file);});}
 function formatSize(b){if(b<1024)return b+' o';if(b<1048576)return(b/1024).toFixed(0)+' Ko';return(b/1048576).toFixed(1)+' Mo';}
 function setupDropZone(zoneId,inputId,labelId,onFile){var zone=document.getElementById(zoneId),input=document.getElementById(inputId);if(!zone||!input)return;zone.onclick=function(){input.click();};input.onchange=function(){if(input.files[0])handleDropFile(input.files[0],labelId,onFile);};zone.ondragover=function(e){e.preventDefault();zone.classList.add('drag-over');};zone.ondragleave=function(){zone.classList.remove('drag-over');};zone.ondrop=function(e){e.preventDefault();zone.classList.remove('drag-over');if(e.dataTransfer.files[0])handleDropFile(e.dataTransfer.files[0],labelId,onFile);};}
-function handleDropFile(file,labelId,onFile){if(file.size>4*1024*1024){showToast('Fichier trop lourd (max 4 Mo)','error');return;}var label=document.getElementById(labelId);if(label)label.textContent='📎 '+file.name+' ('+formatSize(file.size)+')';readFileAsBase64(file).then(function(data){onFile({fileData:data,fileName:file.name,fileMime:file.type});});}
-function previewFileRaw(fileData,fileName,fileMime){var content=document.getElementById('modal-preview-content');document.getElementById('modal-preview-title').textContent=fileName||'Fichier';if(fileMime&&fileMime.startsWith('image/'))content.innerHTML='<img src="'+fileData+'" style="max-width:100%;border-radius:var(--radius)">';else if(fileMime==='application/pdf')content.innerHTML='<iframe src="'+fileData+'" style="width:100%;height:500px;border:none;border-radius:var(--radius)"></iframe>';else content.innerHTML='<div style="text-align:center;padding:32px"><div style="font-size:48px">📄</div><div style="margin:12px 0">'+fileName+'</div><a href="'+fileData+'" download="'+fileName+'" class="btn-primary" style="text-decoration:none">⬇ Télécharger</a></div>';document.getElementById('modal-preview-dl').href=fileData;document.getElementById('modal-preview-dl').download=fileName||'document';showModal('modal-preview');}
+function handleDropFile(file,labelId,onFile){if(file.size>20*1024*1024){showToast('Fichier trop lourd (max 20 Mo)','error');return;}var label=document.getElementById(labelId);if(label)label.textContent='📎 '+file.name+' ('+formatSize(file.size)+')';onFile({file:file,fileName:file.name,fileMime:file.type});}
+function previewFileRaw(fileData,fileName,fileMime){
+  var content=document.getElementById('modal-preview-content');
+  document.getElementById('modal-preview-title').textContent=fileName||'Fichier';
+  // Détecter si c'est une URL Storage ou base64
+  var isUrl=fileData&&fileData.startsWith('http');
+  if(fileMime&&fileMime.startsWith('image/')){
+    content.innerHTML='<img src="'+fileData+'" style="max-width:100%;border-radius:var(--radius)">';
+  } else if(fileMime==='application/pdf'){
+    content.innerHTML='<iframe src="'+fileData+'" style="width:100%;height:500px;border:none;border-radius:var(--radius)"></iframe>';
+  } else {
+    content.innerHTML='<div style="text-align:center;padding:32px"><div style="font-size:48px">📄</div><div style="margin:12px 0">'+fileName+'</div><a href="'+fileData+'" '+(isUrl?'target="_blank"':'download="'+fileName+'"')+' class="btn-primary" style="text-decoration:none">'+(isUrl?'🔗 Ouvrir':'⬇ Télécharger')+'</a></div>';
+  }
+  document.getElementById('modal-preview-dl').href=fileData;
+  document.getElementById('modal-preview-dl').download=fileName||'document';
+  showModal('modal-preview');
+}
 async function previewFileSB(id,table){try{var item=await SB.getById(table,id);if(!item||!item.fileData){showToast('Aucun fichier joint','error');return;}previewFileRaw(item.fileData,item.fileName,item.fileMime||'application/octet-stream');}catch(e){showToast('Erreur','error');}}
 
 // PROF : GESTION EXERCICES
@@ -297,7 +668,24 @@ async function renderGestionExercices(){
   loading('prof-exercices-list');
   try{
     var exercices=await SB.get('exercices');
-    document.getElementById('prof-exercices-list').innerHTML=exercices.map(function(e){var qs=Array.isArray(e.questions)?e.questions:(e.questions?JSON.parse(e.questions):[]);return'<div class="list-row"><div class="list-row-icon" style="background:'+(e.type==='examen'?'var(--red-light)':'var(--blue-light)')+'"> '+(e.type==='examen'?'📋':'✏️')+'</div><div class="list-row-info"><div class="list-row-title">'+e.titre+'</div><div class="list-row-sub">'+e.matiere+' · '+qs.length+' questions'+(e.duree?' · '+e.duree+' min':'')+'</div></div><div class="list-row-actions"><span class="card-badge '+(e.type==='examen'?'badge-examen':'badge-exercice')+'">'+e.type+'</span><button class="btn-danger btn-sm" onclick="deleteExercice(\''+e.id+'\')">Supprimer</button></div></div>';}).join('')||emptyState('🎯','Aucun exercice');
+    var eleves=DB.getEleves();
+    var html='';
+    for(var i=0;i<exercices.length;i++){
+      var e=exercices[i];
+      var qs=Array.isArray(e.questions)?e.questions:(e.questions?JSON.parse(e.questions):[]);
+      // Récupérer les résultats de tous les élèves pour cet exercice
+      var resultatsEx=[];
+      eleves.forEach(function(elv){
+        var res=DB.getResultatsEleve(elv.id).find(function(r){return r.exerciceId===String(e.id)||r.exerciceId===e.id;});
+        if(res)resultatsEx.push({eleve:elv,res:res});
+      });
+      var nbFait=resultatsEx.length;
+      var moyEx=nbFait?(resultatsEx.reduce(function(s,r){return s+(r.res.score/r.res.total)*20;},0)/nbFait).toFixed(1):'–';
+      var aujourd_hui=new Date().toISOString().slice(0,10);
+      var programmeBadge=e.visible_from&&e.visible_from>aujourd_hui?'<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--orange-light);color:var(--orange);font-weight:600;margin-left:4px">⏳ Visible le '+formatDate(e.visible_from)+'</span>':'';
+      html+='<div class="list-row" style="flex-wrap:wrap;gap:8px"><div class="list-row-icon" style="background:'+(e.type==='examen'?'var(--red-light)':'var(--blue-light)')+'"> '+(e.type==='examen'?'📋':'✏️')+'</div><div class="list-row-info"><div class="list-row-title">'+e.titre+programmeBadge+'</div><div class="list-row-sub">'+e.matiere+' · '+qs.length+' questions'+(e.duree?' · '+e.duree+' min':'')+(e.fileName?' · <span style="color:var(--green)">📎 '+e.fileName+'</span>':'')+'</div>'+(nbFait>0?'<div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap">'+resultatsEx.map(function(r){var n=((r.res.score/r.res.total)*20).toFixed(0);return'<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:'+(parseInt(n)>=10?'var(--green-light)':'var(--red-light)')+';color:'+(parseInt(n)>=10?'var(--green)':'var(--red)')+'">'+r.eleve.prenom+' : '+n+'/20</span>';}).join('')+'</div>':'<div style="margin-top:4px;font-size:12px;color:var(--text-light)">Aucun élève n\'a encore fait cet exercice</div>')+'</div><div class="list-row-actions" style="align-self:flex-start">'+(e.fileData?'<button class="btn-gold btn-sm" onclick="previewFileSB('+e.id+',\'exercices\')">👁 Voir</button>':'')+'<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:var(--cream-dark)">'+nbFait+'/'+eleves.length+' élèves · moy. '+moyEx+'</span><span class="card-badge '+(e.type==='examen'?'badge-examen':'badge-exercice')+'">'+e.type+'</span><button class="btn-danger btn-sm" onclick="deleteExercice('+e.id+')">Supprimer</button></div></div>';
+    }
+    document.getElementById('prof-exercices-list').innerHTML=html||emptyState('🎯','Aucun exercice');
   }catch(e){showErr('prof-exercices-list','Erreur chargement.');}
 }
 
@@ -311,11 +699,17 @@ async function saveExercice(){
   var titre=document.getElementById('ne-titre').value.trim();
   if(!titre){showToast('Veuillez saisir un titre','error');return;}
   var qs=questionBlocks.filter(Boolean).filter(function(q){return q.q&&q.opts.some(function(o){return o;});});
-  if(!qs.length){showToast('Ajoutez au moins une question','error');return;}
+  // Questions obligatoires seulement si pas de fichier joint
+  if(!qs.length&&!pendingExerciceFile){showToast('Ajoutez au moins une question ou joignez un document','error');return;}
   var type=document.getElementById('ne-type').value;
   try{
-    var item={titre:titre,type:type,matiere:document.getElementById('ne-matiere').value,duree:type==='examen'?parseInt(document.getElementById('ne-duree').value):null,questions:qs};
-    if(pendingExerciceFile){item.fileData=pendingExerciceFile.fileData;item.fileName=pendingExerciceFile.fileName;item.fileMime=pendingExerciceFile.fileMime;}
+    var item={titre:titre,type:type,matiere:document.getElementById('ne-matiere').value,duree:type==='examen'?parseInt(document.getElementById('ne-duree').value):null,questions:qs.length?qs:[],url:document.getElementById('ne-url').value||null,visible_from:document.getElementById('ne-visible-from').value||null};
+    if(pendingExerciceFile&&pendingExerciceFile.file){
+      showToast('⏳ Upload en cours…');
+      var path='exercices/'+Date.now()+'_'+pendingExerciceFile.fileName.replace(/\s/g,'_');
+      var fileUrl=await SB.uploadFile(pendingExerciceFile.file,path);
+      item.fileData=fileUrl;item.fileName=pendingExerciceFile.fileName;item.fileMime=pendingExerciceFile.fileMime;
+    }
     await SB.insert('exercices',item);
     closeAllModals();questionBlocks=[];pendingExerciceFile=null;document.getElementById('questions-list').innerHTML='';renderGestionExercices();showToast('✅ Exercice créé !','success');
   }catch(e){showToast('Erreur création exercice','error');}
@@ -327,9 +721,74 @@ async function renderGestionTravaux(){
   try{
     var rendus=await SB.get('rendus');
     var devoirs=await SB.get('devoirs');
-    document.getElementById('prof-travaux-list').innerHTML='<div style="margin-bottom:20px"><div class="upload-zone" id="prof-upload-zone" style="cursor:pointer;max-width:500px"><div class="upload-zone-icon">📤</div><div style="font-size:13px;font-weight:500">Déposer un document corrigé</div><div id="prof-upload-label" style="margin-top:8px;font-size:12px;color:var(--gold-dark)"></div><input type="file" id="prof-upload-input" style="display:none" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"></div></div>'+(rendus.length?rendus.map(function(r){var d=devoirs.find(function(x){return x.id===r.devoirId;});var e=DB.getUser(r.eleveId);return'<div class="list-row"><div class="status-dot '+(r.note!==null?'dot-green':'dot-orange')+'" style="margin:0 4px"></div><div class="list-row-info"><div class="list-row-title">'+(e?e.nom:r.eleveId)+' – '+(d?d.titre:'Devoir')+'</div><div class="list-row-sub">Rendu le '+formatDate(r.date)+'</div></div><div class="list-row-actions">'+(r.note!==null?'<span class="note-badge" style="color:'+(r.note>=10?'var(--green)':'var(--red)')+'">'+r.note+'/20</span>':'')+'<button class="btn-primary btn-sm" onclick="openNoter(\''+r.id+'\')">'+(r.note!==null?'Modifier':'Corriger')+'</button></div></div>';}).join(''):emptyState('📥','Aucun travail rendu'));
+
+    // Suppression automatique des rendus notés de plus de 30 jours
+    var maintenant=new Date();
+    var aSupprimer=rendus.filter(function(r){
+      if(r.note===null)return false;
+      var dateRendu=new Date(r.date);
+      var diffJours=Math.floor((maintenant-dateRendu)/(1000*60*60*24));
+      return diffJours>30;
+    });
+    if(aSupprimer.length>0){
+      await Promise.all(aSupprimer.map(function(r){return SB.delete('rendus',r.id);}));
+      rendus=rendus.filter(function(r){return!aSupprimer.find(function(s){return s.id===r.id;});});
+      if(aSupprimer.length>0)showToast('🗑 '+aSupprimer.length+' rendu(s) ancien(s) supprimé(s) automatiquement');
+    }
+
+    // Filtres actifs
+    var filtreClasse=window._filtreRenduClasse||'Toutes';
+    var filtreDevoir=window._filtreRenduDevoir||'Tous';
+
+    // Liste des classes des élèves
+    var classes=['Toutes','Terminale Bac Pro','1ère Bac Pro','2nde Bac Pro'];
+
+    // Filtrer par classe
+    var rendusFiltres=rendus.filter(function(r){
+      if(filtreClasse==='Toutes')return true;
+      var e=DB.getUser(r.eleveId);
+      return e&&e.classe===filtreClasse;
+    });
+
+    // Filtrer par devoir
+    if(filtreDevoir!=='Tous'){
+      rendusFiltres=rendusFiltres.filter(function(r){return String(r.devoirId)===String(filtreDevoir);});
+    }
+
+    var html='';
+
+    // Bouton créer devoir
+    html+='<div style="display:flex;justify-content:flex-end;margin-bottom:16px"><button class="btn-primary" onclick="showModal(\'modal-add-devoir\')">+ Créer un devoir</button></div>';
+
+    // Filtres classe
+    html+='<div class="chip-group">'+classes.map(function(c){return'<div class="chip '+(filtreClasse===c?'active':'')+'" onclick="filtreRenduClasse(\''+c+'\')">'+c+'</div>';}).join('')+'</div>';
+
+    // Filtre devoir
+    html+='<div class="form-group" style="margin-bottom:16px"><select class="form-input" onchange="filtreRenduDevoir(this.value)" style="max-width:400px"><option value="Tous">Tous les devoirs</option>'+devoirs.map(function(d){return'<option value="'+d.id+'" '+(filtreDevoir===String(d.id)?'selected':'')+'>'+d.titre+'</option>';}).join('')+'</select></div>';
+
+    // Zone upload prof
+    html+='<div style="margin-bottom:16px"><div class="upload-zone" id="prof-upload-zone" style="cursor:pointer;max-width:500px"><div class="upload-zone-icon">📤</div><div style="font-size:13px;font-weight:500">Déposer un document corrigé</div><div id="prof-upload-label" style="margin-top:8px;font-size:12px;color:var(--gold-dark)"></div><input type="file" id="prof-upload-input" style="display:none" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"></div></div>';
+
+    // Liste des rendus
+    html+=rendusFiltres.length?rendusFiltres.map(function(r){
+      var d=devoirs.find(function(x){return String(x.id)===String(r.devoirId);});
+      var e=DB.getUser(r.eleveId);
+      var jours=Math.floor((maintenant-new Date(r.date))/(1000*60*60*24));
+      var expireIn=30-jours;
+      return'<div class="list-row"><div class="status-dot '+(r.note!==null?'dot-green':'dot-orange')+'" style="margin:0 4px"></div><div class="list-row-info"><div class="list-row-title">'+(e?e.nom:r.eleveId)+' – '+(d?d.titre:'Devoir')+'</div><div class="list-row-sub">Rendu le '+formatDate(r.date)+(r.fileName?' · 📎 '+r.fileName:'')+(r.note!==null?' · <span style="color:var(--text-light);font-size:11px">Suppression dans '+expireIn+' j</span>':'')+'</div></div><div class="list-row-actions">'+(r.fileData?'<button class="btn-gold btn-sm" onclick="previewFileRaw(\''+r.fileData+'\',\''+r.fileName+'\',\''+r.fileMime+'\')">👁 Voir</button>':'')+(r.note!==null?'<span class="note-badge" style="color:'+(r.note>=10?'var(--green)':'var(--red)')+'">'+r.note+'/20</span>':'')+'<button class="btn-primary btn-sm" onclick="openNoter('+r.id+')">'+(r.note!==null?'Modifier':'Corriger')+'</button><button class="btn-danger btn-sm" onclick="supprimerRendu('+r.id+')">🗑</button></div></div>';
+    }).join(''):emptyState('📥','Aucun travail rendu');
+
+    document.getElementById('prof-travaux-list').innerHTML=html;
     setupDropZone('prof-upload-zone','prof-upload-input','prof-upload-label',function(f){pendingRenduProfFile=f;showToast('📎 '+f.fileName,'success');});
-  }catch(e){showErr('prof-travaux-list','Erreur chargement.');}
+  }catch(e){console.error(e);showErr('prof-travaux-list','Erreur chargement.');}
+}
+
+function filtreRenduClasse(c){window._filtreRenduClasse=c;renderGestionTravaux();}
+function filtreRenduDevoir(id){window._filtreRenduDevoir=id;renderGestionTravaux();}
+
+async function supprimerRendu(id){
+  if(!confirm('Supprimer ce rendu ? Cette action est irréversible.'))return;
+  try{await SB.delete('rendus',id);renderGestionTravaux();showToast('Rendu supprimé');}catch(e){showToast('Erreur','error');}
 }
 
 async function openNoter(rendId){
@@ -378,15 +837,33 @@ function addEleve(){
 
 function deleteEleve(id){if(!confirm('Supprimer '+id+' ?'))return;DB.removeUser(id);renderGestionEleves();showToast('Élève supprimé');}
 
+var pendingDevoirFile = null;
+
 async function addDevoir(){
   var titre=document.getElementById('nd-titre').value.trim();
   if(!titre){showToast('Veuillez saisir un titre','error');return;}
-  try{await SB.insert('devoirs',{titre:titre,consignes:document.getElementById('nd-consignes').value,deadline:document.getElementById('nd-deadline').value||new Date(Date.now()+7*86400000).toISOString().slice(0,10),creePar:currentUser.id});closeAllModals();renderTravaux();showToast('✅ Devoir créé !','success');}catch(e){showToast('Erreur création devoir','error');}
+  try{
+    var item={titre:titre,consignes:document.getElementById('nd-consignes').value,deadline:document.getElementById('nd-deadline').value||new Date(Date.now()+7*86400000).toISOString().slice(0,10),creePar:currentUser.id,url:document.getElementById('nd-url').value||null};
+    if(pendingDevoirFile&&pendingDevoirFile.file){
+      showToast('⏳ Upload en cours…');
+      var path='devoirs/'+Date.now()+'_'+pendingDevoirFile.fileName.replace(/\s/g,'_');
+      var fileUrl=await SB.uploadFile(pendingDevoirFile.file,path);
+      item.fileData=fileUrl;item.fileName=pendingDevoirFile.fileName;item.fileMime=pendingDevoirFile.fileMime;
+    }
+    await SB.insert('devoirs',item);
+    pendingDevoirFile=null;closeAllModals();renderTravaux();showToast('✅ Devoir créé !','success');
+  }catch(e){showToast('Erreur création devoir','error');}
 }
 
 // MODALS
-function showModal(id){document.getElementById('modal-overlay').classList.remove('hidden');document.getElementById(id).classList.remove('hidden');if(id==='modal-add-cours'){pendingCoursFile=null;var l=document.getElementById('nc-file-label');if(l)l.textContent='';setupDropZone('nc-drop-zone','nc-file-input','nc-file-label',function(f){pendingCoursFile=f;});}if(id==='modal-add-exercice'){pendingExerciceFile=null;var l2=document.getElementById('ne-file-label');if(l2)l2.textContent='';setupDropZone('ne-drop-zone','ne-file-input','ne-file-label',function(f){pendingExerciceFile=f;});}}
-function closeAllModals(){document.getElementById('modal-overlay').classList.add('hidden');document.querySelectorAll('.modal').forEach(function(m){m.classList.add('hidden');});}
+function showModal(id){
+  document.getElementById('modal-overlay').classList.remove('hidden');
+  document.getElementById(id).classList.remove('hidden');
+  if(id==='modal-add-outil'){pendingOutilFile=null;var lo=document.getElementById('no-file-label');if(lo)lo.textContent='';setupDropZone('no-drop-zone','no-file-input','no-file-label',function(f){pendingOutilFile=f;});}
+  if(id==='modal-add-cours'){pendingCoursFile=null;var l=document.getElementById('nc-file-label');if(l)l.textContent='';setupDropZone('nc-drop-zone','nc-file-input','nc-file-label',function(f){pendingCoursFile=f;});}
+  if(id==='modal-add-exercice'){pendingExerciceFile=null;var l2=document.getElementById('ne-file-label');if(l2)l2.textContent='';setupDropZone('ne-drop-zone','ne-file-input','ne-file-label',function(f){pendingExerciceFile=f;});}
+  if(id==='modal-add-devoir'){pendingDevoirFile=null;var l3=document.getElementById('nd-file-label');if(l3)l3.textContent='';setupDropZone('nd-drop-zone','nd-file-input','nd-file-label',function(f){pendingDevoirFile=f;});}
+}function closeAllModals(){document.getElementById('modal-overlay').classList.add('hidden');document.querySelectorAll('.modal').forEach(function(m){m.classList.add('hidden');});}
 
 // TOAST
 var toastTimeout;

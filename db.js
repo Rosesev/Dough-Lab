@@ -1,6 +1,7 @@
 // ===== Dough Lab – Supabase =====
 const SUPABASE_URL = 'https://bwrcvagarvifdzqtbrla.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ3cmN2YWdhcnZpZmR6cXRicmxhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExOTExNzAsImV4cCI6MjA5Njc2NzE3MH0.5E75-_rTHBTaOsr90Ksj0Yhm0BFe0J0rZV-SAbRuW_M';
+const STORAGE_BUCKET = 'doughlab';
 
 const SB = {
   headers: {
@@ -52,6 +53,39 @@ const SB = {
     const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + '?' + col + '=eq.' + encodeURIComponent(val), { headers: this.headers });
     if (!r.ok) throw new Error('WHERE ' + table);
     return r.json();
+  },
+
+  // ===== STORAGE =====
+  // Upload un fichier vers Supabase Storage
+  async uploadFile(file, path) {
+    const storageHeaders = {
+      'apikey': SUPABASE_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_KEY,
+      'Content-Type': file.type,
+      'Cache-Control': '3600',
+      'x-upsert': 'true'
+    };
+    const r = await fetch(SUPABASE_URL + '/storage/v1/object/' + STORAGE_BUCKET + '/' + path, {
+      method: 'POST',
+      headers: storageHeaders,
+      body: file
+    });
+    if (!r.ok) { const e = await r.text(); throw new Error('UPLOAD: ' + e); }
+    return SUPABASE_URL + '/storage/v1/object/public/' + STORAGE_BUCKET + '/' + path;
+  },
+
+  // Supprime un fichier du Storage
+  async deleteFile(path) {
+    const r = await fetch(SUPABASE_URL + '/storage/v1/object/' + STORAGE_BUCKET + '/' + path, {
+      method: 'DELETE',
+      headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }
+    });
+    if (!r.ok) console.warn('Erreur suppression fichier storage:', path);
+  },
+
+  // Génère l'URL publique d'un fichier
+  fileUrl(path) {
+    return SUPABASE_URL + '/storage/v1/object/public/' + STORAGE_BUCKET + '/' + path;
   }
 };
 
@@ -100,3 +134,6 @@ const DB = {
   getProgressionCours,
   setProgressionCours
 };
+
+// Alias global pour compatibilité
+function getUser(id) { return DB.getUser(id); }

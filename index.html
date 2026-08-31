@@ -56,10 +56,6 @@
     <div style="text-align:center;margin-bottom:12px">
       <button onclick="hardReset()" style="background:none;border:none;font-size:11px;color:var(--text-light);cursor:pointer;text-decoration:underline">🔄 Problème de connexion ? Cliquez ici pour réinitialiser</button>
     </div>
-    <div class="demo-accounts">
-      <div class="demo-title">Connexion rapide</div>
-      <div class="demo-row" onclick="fillDemo('severine.rose','Sr31107155!!!','prof')"><span>👩‍🏫 severine.rose</span><span class="demo-badge prof">Prof</span></div>
-    </div>
   </div>
 </div>
 
@@ -92,6 +88,9 @@
     <a class="nav-link" onclick="goTo('travaux')" data-page="travaux">
       <span class="nav-icon">📤</span> Mes travaux
     </a>
+    <a class="nav-link" onclick="goTo('outils')" data-page="outils">
+      <span class="nav-icon">🧰</span> Boîte à outils
+    </a>
     <a class="nav-link" onclick="goTo('examens')" data-page="examens">
       <span class="nav-icon">📋</span> Mode examen
     </a>
@@ -99,6 +98,9 @@
       <span class="nav-icon">📊</span> Mes résultats
     </a>
     <div class="nav-section prof-only hidden" id="nav-section-prof">Enseignant</div>
+    <a class="nav-link prof-only hidden" onclick="goTo('gestion-outils')" data-page="gestion-outils" id="nl-gestion-outils">
+      <span class="nav-icon">🧰</span> Gérer la boîte à outils
+    </a>
     <a class="nav-link prof-only hidden" onclick="goTo('gestion-cours')" data-page="gestion-cours" id="nl-gestion-cours">
       <span class="nav-icon">📝</span> Gérer les cours
     </a>
@@ -136,6 +138,27 @@
           <div id="todo-list"></div>
         </div>
       </div>
+    </div>
+
+    <!-- ===== BOÎTE À OUTILS (ÉLÈVE) ===== -->
+    <div class="page hidden" id="page-outils">
+      <div class="page-header">
+        <h1>🧰 Boîte à outils</h1>
+        <p>Documents utiles pour votre scolarité · Consultation uniquement</p>
+      </div>
+      <div id="outils-content"></div>
+    </div>
+
+    <!-- ===== BOÎTE À OUTILS (PROF) ===== -->
+    <div class="page hidden prof-only" id="page-gestion-outils">
+      <div class="page-header flex-between">
+        <div>
+          <h1>🧰 Gérer la boîte à outils</h1>
+          <p>Ajouter, modifier ou supprimer des documents utiles</p>
+        </div>
+        <button class="btn-primary" onclick="showModal('modal-add-outil')">+ Ajouter un document</button>
+      </div>
+      <div id="gestion-outils-content"></div>
     </div>
 
     <!-- ===== COURS ===== -->
@@ -250,6 +273,50 @@
 <!-- ===== MODALS ===== -->
 <div class="modal-overlay hidden" id="modal-overlay" onclick="closeAllModals()"></div>
 
+<!-- Modal : Ajouter outil -->
+<div class="modal hidden" id="modal-add-outil">
+  <div class="modal-header">
+    <h3>Ajouter un document</h3>
+    <button class="modal-close" onclick="closeAllModals()">✕</button>
+  </div>
+  <div class="form-group">
+    <label>Titre</label>
+    <input type="text" class="form-input" id="no-titre" placeholder="Ex: Règlement intérieur">
+  </div>
+  <div class="form-group">
+    <label>Catégorie</label>
+    <select class="form-input" id="no-categorie">
+      <option>Vie scolaire</option>
+      <option>Hygiène & Sécurité</option>
+      <option>Fiches techniques</option>
+      <option>Réglementation</option>
+      <option>Examens & diplômes</option>
+      <option>Autre</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label>Description (optionnel)</label>
+    <input type="text" class="form-input" id="no-description" placeholder="Courte description…">
+  </div>
+  <div class="form-group">
+    <label>🔗 Lien URL (optionnel)</label>
+    <input type="text" class="form-input" id="no-url" placeholder="https://…">
+  </div>
+  <div class="form-group">
+    <label>📎 Joindre un fichier (PDF, Word – max 4 Mo)</label>
+    <div class="upload-zone" id="no-drop-zone" style="cursor:pointer">
+      <div class="upload-zone-icon">📁</div>
+      <div>Glissez un fichier ici ou cliquez pour parcourir</div>
+      <div id="no-file-label" style="margin-top:6px;font-size:12px;color:var(--gold-dark);font-weight:500"></div>
+      <input type="file" id="no-file-input" style="display:none" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg">
+    </div>
+  </div>
+  <div class="modal-actions">
+    <button class="btn-secondary" onclick="closeAllModals()">Annuler</button>
+    <button class="btn-primary" onclick="addOutil()">Ajouter</button>
+  </div>
+</div>
+
 <!-- Modal : Ajouter cours -->
 <div class="modal hidden" id="modal-add-cours">
   <div class="modal-header">
@@ -278,6 +345,19 @@
       <option value="fiche">📋 Fiche technique</option>
       <option value="lien">🔗 Lien externe</option>
     </select>
+  </div>
+  <div class="form-group">
+    <label>Classe(s) concernée(s)</label>
+    <select class="form-input" id="nc-classe">
+      <option value="Toutes">Toutes les classes</option>
+      <option value="2nde Bac Pro">2nde Bac Pro</option>
+      <option value="1ère Bac Pro">1ère Bac Pro</option>
+      <option value="Terminale Bac Pro">Terminale Bac Pro</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label>📅 Visible à partir du (laisser vide = visible immédiatement)</label>
+    <input type="date" class="form-input" id="nc-visible-from">
   </div>
   <div class="form-group">
     <label>URL ou lien de la ressource (optionnel si fichier joint)</label>
@@ -332,6 +412,14 @@
       <option>PSE</option>
     </select>
   </div>
+  <div class="form-group">
+    <label>🔗 Lien URL (vidéo, ressource…)</label>
+    <input type="text" class="form-input" id="ne-url" placeholder="https://…">
+  </div>
+  <div class="form-group">
+    <label>📅 Visible à partir du (laisser vide = visible immédiatement)</label>
+    <input type="date" class="form-input" id="ne-visible-from">
+  </div>
   <div id="questions-builder">
     <div class="form-group">
       <label>📎 Joindre un document (sujet, énoncé – PDF, image – max 4 Mo)</label>
@@ -369,6 +457,19 @@
   <div class="form-group">
     <label>Date limite de rendu</label>
     <input type="date" class="form-input" id="nd-deadline">
+  </div>
+  <div class="form-group">
+    <label>🔗 Lien URL (vidéo, site, ressource…)</label>
+    <input type="text" class="form-input" id="nd-url" placeholder="https://…">
+  </div>
+  <div class="form-group">
+    <label>📎 Joindre un document (PDF, Word – max 4 Mo)</label>
+    <div class="upload-zone" id="nd-drop-zone" style="cursor:pointer">
+      <div class="upload-zone-icon">📁</div>
+      <div>Glissez un fichier ici ou cliquez pour parcourir</div>
+      <div id="nd-file-label" style="margin-top:6px;font-size:12px;color:var(--gold-dark);font-weight:500"></div>
+      <input type="file" id="nd-file-input" style="display:none" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg">
+    </div>
   </div>
   <div class="modal-actions">
     <button class="btn-secondary" onclick="closeAllModals()">Annuler</button>
@@ -466,7 +567,7 @@
 <!-- Toast -->
 <div class="toast hidden" id="toast"></div>
 
-<script src="db.js?v=3.1"></script>
-<script src="app.js?v=3.1"></script>
+<script src="db.js?v=5.2"></script>
+<script src="app.js?v=5.2"></script>
 </body>
 </html>
