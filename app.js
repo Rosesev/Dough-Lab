@@ -9,10 +9,14 @@ window.loginRole = 'eleve';
 function togglePw(a,b){var i=document.getElementById(a),e=document.getElementById(b);if(!i||!e)return;i.type=i.type==='password'?'text':'password';e.textContent=i.type==='password'?'👁':'🙈';}
 function fillDemo(id,pw,role){window.loginRole=role;document.getElementById('tab-eleve').classList.toggle('active',role==='eleve');document.getElementById('tab-prof').classList.toggle('active',role==='prof');document.getElementById('login-id').value=id;document.getElementById('login-pw').value=pw;}
 
-function doLogin(){
+async function doLogin(){
   var id=document.getElementById('login-id').value.trim();
   var pw=document.getElementById('login-pw').value.trim();
   var role=window.loginRole||'eleve';
+  var btn=document.querySelector('.btn-login');
+  if(btn){btn.disabled=true;btn.textContent='Connexion…';}
+  try{ await DB.ready(); }catch(e){}
+  if(btn){btn.disabled=false;btn.textContent='Se connecter →';}
   var user=DB.getUser(id);
   if(!user){showLoginError('Identifiant introuvable.');return;}
   if(user.pw!==pw){showLoginError('Mot de passe incorrect.');return;}
@@ -824,18 +828,24 @@ function filtreClasse(c){window._filtreClasse=c;renderGestionEleves();}
 document.addEventListener('DOMContentLoaded',function(){var p=document.getElementById('ae-prenom'),n=document.getElementById('ae-nom');if(p)p.addEventListener('input',updateAeId);if(n)n.addEventListener('input',updateAeId);});
 function updateAeId(){var p=(document.getElementById('ae-prenom').value||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'');var n=(document.getElementById('ae-nom').value||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'');document.getElementById('ae-id').value=p&&n?p+'.'+n:'';}
 
-function addEleve(){
+async function addEleve(){
   var id=document.getElementById('ae-id').value.trim();
   var prenom=document.getElementById('ae-prenom').value.trim();
   var nom=document.getElementById('ae-nom').value.trim();
   if(!id||!prenom||!nom){showToast('Remplissez prénom et nom','error');return;}
   if(DB.getUser(id)){showToast('Identifiant déjà utilisé','error');return;}
   var classe=document.getElementById('ae-classe').value;
-  DB.addUser({id:id,nom:prenom+' '+nom,prenom:prenom,initiales:(prenom[0]+nom[0]).toUpperCase(),role:'eleve',pw:document.getElementById('ae-pw').value||'eleve123',classe:classe});
-  closeAllModals();renderGestionEleves();showToast('✅ Compte créé : '+id,'success');
+  try{
+    await DB.addUser({id:id,nom:prenom+' '+nom,prenom:prenom,initiales:(prenom[0]+nom[0]).toUpperCase(),role:'eleve',pw:document.getElementById('ae-pw').value||'eleve123',classe:classe});
+    closeAllModals();renderGestionEleves();showToast('✅ Compte créé : '+id,'success');
+  }catch(e){showToast('Erreur : compte non enregistré (vérifiez la connexion internet)','error');}
 }
 
-function deleteEleve(id){if(!confirm('Supprimer '+id+' ?'))return;DB.removeUser(id);renderGestionEleves();showToast('Élève supprimé');}
+async function deleteEleve(id){
+  if(!confirm('Supprimer '+id+' ?'))return;
+  try{ await DB.removeUser(id); renderGestionEleves(); showToast('Élève supprimé'); }
+  catch(e){ showToast('Erreur lors de la suppression','error'); }
+}
 
 var pendingDevoirFile = null;
 
