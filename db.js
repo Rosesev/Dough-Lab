@@ -89,19 +89,53 @@ const SB = {
   }
 };
 
-// Utilisateurs en localStorage
+// ===== Utilisateurs — table "users" dans Supabase (partagée par tous les appareils) =====
+// Ancien stockage local (gardé en secours hors-ligne + pour migrer automatiquement
+// les comptes déjà créés sur cet appareil avant la mise à jour).
 const USERS_KEY = 'doughlab_users_v2';
 let _users = [
   { id: 'severine.rose', nom: 'Mme Rosé', prenom: 'Séverine', initiales: 'SR', role: 'prof', pw: 'Sr31107155!!!', classe: null }
 ];
 
-(function loadUsers() {
-  const raw = localStorage.getItem(USERS_KEY);
-  if (!raw) return;
-  try { JSON.parse(raw).forEach(u => { if (!_users.find(x => x.id === u.id)) _users.push(u); }); } catch(e) {}
-})();
+function saveUsersLocalBackup() {
+  try { localStorage.setItem(USERS_KEY, JSON.stringify(_users)); } catch(e) {}
+}
 
-function saveUsers() { localStorage.setItem(USERS_KEY, JSON.stringify(_users)); }
+// Migre vers Supabase les comptes qui n'existent que dans le stockage local de cet
+// appareil (créés avant la correction, ou créés hors-ligne).
+async function _migrateLocalUsers() {
+  let local = [];
+  try { local = JSON.parse(localStorage.getItem(USERS_KEY) || '[]'); } catch(e) { return; }
+  for (const u of local) {
+    if (!_users.find(x => x.id === u.id)) {
+      try { await SB.insert('users', u); _users.push(u); }
+      catch(e) { console.error('Migration du compte ' + u.id + ' impossible :', e); }
+    }
+  }
+}
+
+// Charge les comptes depuis Supabase au démarrage. Tant que cette promesse n'est
+// pas résolue, DB.getUser()/DB.getEleves() peuvent encore renvoyer les valeurs par
+// défaut ci-dessus (utile hors-ligne) — le login attend explicitement ce chargement.
+const _usersReady = (async function loadUsers() {
+  try {
+    const remote = await SB.get('users');
+    if (Array.isArray(remote)) {
+      // Fusionne avec les valeurs par défaut au lieu de les remplacer, pour que le
+      // compte professeur reste toujours accessible même si sa ligne manque côté Supabase.
+      const merged = _users.slice();
+      remote.forEach(u => {
+        const idx = merged.findIndex(x => x.id === u.id);
+        if (idx >= 0) merged[idx] = u; else merged.push(u);
+      });
+      _users = merged;
+    }
+  } catch(e) {
+    console.error('Chargement des comptes distants impossible (hors-ligne ?), utilisation du secours local.', e);
+  }
+  await _migrateLocalUsers();
+  saveUsersLocalBackup();
+})();
 
 // Résultats et progression en localStorage (propres à chaque élève)
 function getResultatsEleve(eleveId) {
@@ -125,10 +159,19 @@ function setProgressionCours(eleveId, coursId, pct) {
 
 // Interface DB unifiée
 const DB = {
+  ready: () => _usersReady,
   getUser: id => _users.find(u => u.id === id) || null,
   getEleves: () => _users.filter(u => u.role === 'eleve'),
-  addUser(user) { _users.push(user); saveUsers(); },
-  removeUser(id) { _users = _users.filter(u => u.id !== id); saveUsers(); },
+  async addUser(user) {
+    await SB.insert('users', user);
+    _users.push(user);
+    saveUsersLocalBackup();
+  },
+  async removeUser(id) {
+    await SB.delete('users', id);
+    _users = _users.filter(u => u.id !== id);
+    saveUsersLocalBackup();
+  },
   getResultatsEleve,
   addResultat,
   getProgressionCours,
