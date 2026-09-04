@@ -94,6 +94,7 @@ function filterCours(v){coursFilter=v.toLowerCase();renderCours();}
 async function renderCours(){
   loading('cours-list');
   try{
+    await DB.refresh();
     var all=await SB.get('cours');
     var classeColors={'Toutes':'var(--brown)','2nde Bac Pro':'var(--green)','1ère Bac Pro':'var(--blue)','Terminale Bac Pro':'var(--red)'};
     var aujourd_hui=new Date().toISOString().slice(0,10);
@@ -157,6 +158,7 @@ async function renderExercices(){
   document.getElementById('exercice-player').classList.add('hidden');
   loading('exercices-grid');
   try{
+    await DB.refresh();
     var all=await SB.get('exercices');
     var aujourd_hui=new Date().toISOString().slice(0,10);
     var exercices=all.filter(function(e){
@@ -167,7 +169,7 @@ async function renderExercices(){
     });
     document.getElementById('exercices-grid').innerHTML=exercices.map(function(e){
       var qs=Array.isArray(e.questions)?e.questions:(e.questions?JSON.parse(e.questions):[]);
-      var res=DB.getResultatsEleve(currentUser.id).find(function(r){return r.exerciceId===e.id;});
+      var res=DB.getResultatsEleve(currentUser.id).find(function(r){return String(r.exerciceId)===String(e.id);});
       return'<div class="resource-card" onclick="startExercice(\''+e.id+'\')"><div class="card-emoji">✏️</div><span class="card-badge badge-exercice">Exercice</span><div class="card-title">'+e.titre+'</div><div class="card-sub">'+e.matiere+'</div><div class="card-sub">'+qs.length+' questions</div><div class="card-sub" style="color:'+(res?'var(--green)':'var(--text-light)')+'">'+( res?'🏆 '+res.score+'/'+res.total:'Pas encore fait')+'</div></div>';
     }).join('')||emptyState('✏️','Aucun exercice disponible');
   }catch(e){showErr('exercices-grid','Erreur chargement.');}
@@ -306,6 +308,7 @@ async function renderExamens(){
   document.getElementById('exam-player').classList.add('hidden');
   loading('examens-grid');
   try{
+    await DB.refresh();
     var all=await SB.get('exercices');
     var aujourd_hui=new Date().toISOString().slice(0,10);
     var examens=all.filter(function(e){
@@ -531,9 +534,10 @@ function finishExam(timeout,triche){
 }
 
 // RÉSULTATS
-function renderResultats(){
-  var resultats=DB.getResultatsEleve(currentUser.id);
+async function renderResultats(){
   loading('resultats-content');
+  await DB.refresh();
+  var resultats=DB.getResultatsEleve(currentUser.id);
   SB.get('rendus').then(function(tousRendus){
     return SB.get('devoirs').then(function(devoirs){
       var rendusNotes=tousRendus.filter(function(r){return String(r.eleveId)===String(currentUser.id)&&r.note!==null;});
@@ -671,6 +675,7 @@ async function previewFileSB(id,table){try{var item=await SB.getById(table,id);i
 async function renderGestionExercices(){
   loading('prof-exercices-list');
   try{
+    await DB.refresh();
     var exercices=await SB.get('exercices');
     var eleves=DB.getEleves();
     var html='';

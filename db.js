@@ -49,6 +49,17 @@ const SB = {
     if (!r.ok) throw new Error('DELETE ' + table);
   },
 
+  // Insère ou met à jour une ligne selon une contrainte d'unicité
+  async upsert(table, item, onConflict) {
+    const h = Object.assign({}, this.headers, { 'Prefer': 'return=representation,resolution=merge-duplicates' });
+    const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + '?on_conflict=' + onConflict, {
+      method: 'POST', headers: h, body: JSON.stringify(item)
+    });
+    if (!r.ok) { const e = await r.text(); throw new Error('UPSERT ' + table + ': ' + e); }
+    const rows = await r.json();
+    return Array.isArray(rows) ? rows[0] : rows;
+  },
+
   async where(table, col, val) {
     const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + '?' + col + '=eq.' + encodeURIComponent(val), { headers: this.headers });
     if (!r.ok) throw new Error('WHERE ' + table);
@@ -97,20 +108,47 @@ let _users = [
   { id: 'severine.rose', nom: 'Mme Rosé', prenom: 'Séverine', initiales: 'SR', role: 'prof', pw: 'Sr31107155!!!', classe: null }
 ];
 
+// Sauvegarde locale de secours. IMPORTANT : cette fonction ne doit JAMAIS faire
+// disparaître un compte déjà présent en local (sinon un compte qui n'a pas pu
+// être envoyé vers Supabase serait définitivement perdu). On fusionne donc
+// toujours avec ce qui est déjà stocké sur l'appareil.
 function saveUsersLocalBackup() {
-  try { localStorage.setItem(USERS_KEY, JSON.stringify(_users)); } catch(e) {}
+  try {
+    let local = [];
+    try { local = JSON.parse(localStorage.getItem(USERS_KEY) || '[]'); } catch(e) { local = []; }
+    if (!Array.isArray(local)) local = [];
+    const merged = _users.slice();
+    local.forEach(u => {
+      if (u && u.id && !merged.find(x => x.id === u.id)) merged.push(u);
+    });
+    localStorage.setItem(USERS_KEY, JSON.stringify(merged));
+  } catch(e) {}
 }
 
 // Migre vers Supabase les comptes qui n'existent que dans le stockage local de cet
 // appareil (créés avant la correction, ou créés hors-ligne).
+let _migrationErrors = [];
 async function _migrateLocalUsers() {
+  _migrationErrors = [];
   let local = [];
   try { local = JSON.parse(localStorage.getItem(USERS_KEY) || '[]'); } catch(e) { return; }
+  if (!Array.isArray(local)) return;
   for (const u of local) {
-    if (!_users.find(x => x.id === u.id)) {
-      try { await SB.insert('users', u); _users.push(u); }
-      catch(e) { console.error('Migration du compte ' + u.id + ' impossible :', e); }
+    if (u && u.id && !_users.find(x => x.id === u.id)) {
+      try {
+        await SB.insert('users', u);
+        _users.push(u);
+      } catch(e) {
+        // Échec d'envoi : on garde quand même le compte utilisable sur cet
+        // appareil, et on retentera au prochain chargement.
+        _users.push(u);
+        _migrationErrors.push(u.id);
+        console.error('Migration du compte ' + u.id + ' impossible :', e);
+      }
     }
+  }
+  if (_migrationErrors.length) {
+    console.warn('Comptes non synchronisés avec Supabase (conservés en local) : ' + _migrationErrors.join(', '));
   }
 }
 
@@ -137,29 +175,72 @@ const _usersReady = (async function loadUsers() {
   saveUsersLocalBackup();
 })();
 
-// Résultats et progression en localStorage (propres à chaque élève)
+// ===== Résultats et progression — tables Supabase (partagées par tous les appareils) =====
+// Un cache en mémoire permet aux fonctions de lecture de rester synchrones (comme
+// avant), pendant que les écritures partent vers Supabase en arrière-plan.
+let _resultats = [];   // { eleveId, exerciceId, score, total, type, date }
+let _progression = []; // { eleveId, coursId, pct }
+
+function _mapResultat(row) {
+  return { eleveId: String(row.eleve_id), exerciceId: String(row.exercice_id),
+           score: row.score, total: row.total, type: row.type, date: row.date };
+}
+function _mapProgression(row) {
+  return { eleveId: String(row.eleve_id), coursId: String(row.cours_id), pct: row.pct };
+}
+
+// Recharge résultats et progression depuis Supabase.
+async function _loadResultats() {
+  try {
+    const rows = await SB.get('resultats');
+    if (Array.isArray(rows)) _resultats = rows.map(_mapResultat);
+  } catch(e) { console.error('Chargement des résultats impossible :', e); }
+  try {
+    const rows = await SB.get('progression');
+    if (Array.isArray(rows)) _progression = rows.map(_mapProgression);
+  } catch(e) { console.error('Chargement de la progression impossible :', e); }
+}
+const _dataReady = _loadResultats();
+
 function getResultatsEleve(eleveId) {
-  try { return JSON.parse(localStorage.getItem('dl_res_' + eleveId) || '[]'); } catch(e) { return []; }
+  return _resultats.filter(r => r.eleveId === String(eleveId));
 }
+
 function addResultat(eleveId, exerciceId, score, total, type) {
-  let res = getResultatsEleve(eleveId).filter(r => r.exerciceId !== exerciceId);
-  res.push({ exerciceId, score, total, type, date: new Date().toISOString().slice(0,10) });
-  localStorage.setItem('dl_res_' + eleveId, JSON.stringify(res));
+  const rec = {
+    eleveId: String(eleveId), exerciceId: String(exerciceId),
+    score: score, total: total, type: type,
+    date: new Date().toISOString().slice(0,10)
+  };
+  const i = _resultats.findIndex(r => r.eleveId === rec.eleveId && r.exerciceId === rec.exerciceId);
+  if (i >= 0) _resultats[i] = rec; else _resultats.push(rec);
+  SB.upsert('resultats', {
+    eleve_id: rec.eleveId, exercice_id: rec.exerciceId,
+    score: rec.score, total: rec.total, type: rec.type, date: rec.date
+  }, 'eleve_id,exercice_id').catch(e => {
+    console.error('Enregistrement du résultat impossible :', e);
+    if (typeof showToast === 'function') showToast('⚠️ Résultat non enregistré (connexion ?)', 'error');
+  });
 }
+
 function getProgressionCours(eleveId, coursId) {
-  try { return (JSON.parse(localStorage.getItem('dl_prog_' + eleveId) || '[]')).find(p => p.coursId === coursId) || null; } catch(e) { return null; }
+  return _progression.find(p => p.eleveId === String(eleveId) && p.coursId === String(coursId)) || null;
 }
+
 function setProgressionCours(eleveId, coursId, pct) {
-  let progs = [];
-  try { progs = JSON.parse(localStorage.getItem('dl_prog_' + eleveId) || '[]'); } catch(e) {}
-  const i = progs.findIndex(p => p.coursId === coursId);
-  if (i >= 0) progs[i].pct = pct; else progs.push({ coursId, pct });
-  localStorage.setItem('dl_prog_' + eleveId, JSON.stringify(progs));
+  const rec = { eleveId: String(eleveId), coursId: String(coursId), pct: pct };
+  const i = _progression.findIndex(p => p.eleveId === rec.eleveId && p.coursId === rec.coursId);
+  if (i >= 0) _progression[i] = rec; else _progression.push(rec);
+  SB.upsert('progression', {
+    eleve_id: rec.eleveId, cours_id: rec.coursId, pct: rec.pct
+  }, 'eleve_id,cours_id').catch(e => console.error('Enregistrement de la progression impossible :', e));
 }
 
 // Interface DB unifiée
 const DB = {
-  ready: () => _usersReady,
+  ready: () => Promise.all([_usersReady, _dataReady]),
+  refresh: () => _loadResultats(),
+  migrationErrors: () => _migrationErrors.slice(),
   getUser: id => _users.find(u => u.id === id) || null,
   getEleves: () => _users.filter(u => u.role === 'eleve'),
   async addUser(user) {
