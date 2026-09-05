@@ -261,7 +261,7 @@ async function renderTravaux(){
         html+='<h2 class="section-title" style="margin:24px 0 12px">Travaux rendus</h2>';
         faits.forEach(function(d){
           var rendu=mesRendus.find(function(r){return String(r.devoirId)===String(d.id);});
-          html+='<div class="devoir-card"><div class="devoir-card-header"><div><div class="devoir-card-title">'+d.titre+'</div><div class="devoir-card-meta">✅ Rendu le '+formatDate(rendu.date)+(rendu.fileName?' · 📎 '+rendu.fileName:'')+'</div></div>'+(rendu.note!==null?'<span class="note-badge" style="color:'+(rendu.note>=10?'var(--green)':'var(--red)')+'">'+rendu.note+'/20</span>':'<span class="tag" style="background:var(--orange-light);color:var(--orange)">En correction</span>')+'</div>'+(rendu.commentaire?'<div class="commentaire-box"><div class="commentaire-label">💬 Commentaire du professeur</div>'+rendu.commentaire+'</div>':'')+'</div>';
+          html+='<div class="devoir-card"><div class="devoir-card-header"><div><div class="devoir-card-title">'+d.titre+'</div><div class="devoir-card-meta">✅ Rendu le '+formatDate(rendu.date)+(rendu.fileName?' · 📎 '+rendu.fileName:(rendu.note!==null?' · fichier archivé':''))+'</div></div>'+(rendu.note!==null?'<span class="note-badge" style="color:'+(rendu.note>=10?'var(--green)':'var(--red)')+'">'+rendu.note+'/20</span>':'<span class="tag" style="background:var(--orange-light);color:var(--orange)">En correction</span>')+'</div>'+(rendu.commentaire?'<div class="commentaire-box"><div class="commentaire-label">💬 Commentaire du professeur</div>'+rendu.commentaire+'</div>':'')+'</div>';
         });
       }
       if(!devoirs.length)html=emptyState('📭','Aucun devoir assigné');
@@ -738,18 +738,29 @@ async function renderGestionTravaux(){
     var rendus=await SB.get('rendus');
     var devoirs=await SB.get('devoirs');
 
-    // Suppression automatique des rendus notés de plus de 30 jours
+    // Archivage automatique après 30 jours : on libère le fichier joint mais on
+    // CONSERVE le rendu, sa note et le commentaire (côté prof comme côté élève).
     var maintenant=new Date();
-    var aSupprimer=rendus.filter(function(r){
+    var aArchiver=rendus.filter(function(r){
       if(r.note===null)return false;
-      var dateRendu=new Date(r.date);
-      var diffJours=Math.floor((maintenant-dateRendu)/(1000*60*60*24));
+      if(!r.fileData)return false;
+      var diffJours=Math.floor((maintenant-new Date(r.date))/(1000*60*60*24));
       return diffJours>30;
     });
-    if(aSupprimer.length>0){
-      await Promise.all(aSupprimer.map(function(r){return SB.delete('rendus',r.id);}));
-      rendus=rendus.filter(function(r){return!aSupprimer.find(function(s){return s.id===r.id;});});
-      if(aSupprimer.length>0)showToast('🗑 '+aSupprimer.length+' rendu(s) ancien(s) supprimé(s) automatiquement');
+    if(aArchiver.length>0){
+      await Promise.all(aArchiver.map(function(r){
+        var chemin=null;
+        if(typeof r.fileData==='string'){
+          var repere='/'+STORAGE_BUCKET+'/';
+          var pos=r.fileData.indexOf(repere);
+          if(pos>=0)chemin=r.fileData.slice(pos+repere.length);
+        }
+        var p=chemin?SB.deleteFile(chemin).catch(function(){}):Promise.resolve();
+        return p.then(function(){return SB.update('rendus',r.id,{fileData:null,fileName:null,fileMime:null});})
+                .catch(function(e){console.error('Archivage du rendu impossible :',e);});
+      }));
+      aArchiver.forEach(function(r){r.fileData=null;r.fileName=null;r.fileMime=null;r.archive=true;});
+      showToast('🗂 '+aArchiver.length+' fichier(s) de plus de 30 jours archivé(s) — notes conservées');
     }
 
     // Filtres actifs
@@ -791,7 +802,7 @@ async function renderGestionTravaux(){
       var e=DB.getUser(r.eleveId);
       var jours=Math.floor((maintenant-new Date(r.date))/(1000*60*60*24));
       var expireIn=30-jours;
-      return'<div class="list-row"><div class="status-dot '+(r.note!==null?'dot-green':'dot-orange')+'" style="margin:0 4px"></div><div class="list-row-info"><div class="list-row-title">'+(e?e.nom:r.eleveId)+' – '+(d?d.titre:'Devoir')+'</div><div class="list-row-sub">Rendu le '+formatDate(r.date)+(r.fileName?' · 📎 '+r.fileName:'')+(r.note!==null?' · <span style="color:var(--text-light);font-size:11px">Suppression dans '+expireIn+' j</span>':'')+'</div></div><div class="list-row-actions">'+(r.fileData?'<button class="btn-gold btn-sm" onclick="previewFileRaw(\''+r.fileData+'\',\''+r.fileName+'\',\''+r.fileMime+'\')">👁 Voir</button>':'')+(r.note!==null?'<span class="note-badge" style="color:'+(r.note>=10?'var(--green)':'var(--red)')+'">'+r.note+'/20</span>':'')+'<button class="btn-primary btn-sm" onclick="openNoter('+r.id+')">'+(r.note!==null?'Modifier':'Corriger')+'</button><button class="btn-danger btn-sm" onclick="supprimerRendu('+r.id+')">🗑</button></div></div>';
+      return'<div class="list-row"><div class="status-dot '+(r.note!==null?'dot-green':'dot-orange')+'" style="margin:0 4px"></div><div class="list-row-info"><div class="list-row-title">'+(e?e.nom:r.eleveId)+' – '+(d?d.titre:'Devoir')+'</div><div class="list-row-sub">Rendu le '+formatDate(r.date)+(r.fileName?' · 📎 '+r.fileName:'')+(r.note===null?'':(r.fileData?' · <span style="color:var(--text-light);font-size:11px">Fichier effacé dans '+expireIn+' j</span>':' · <span style="color:var(--text-light);font-size:11px">Fichier archivé · note conservée</span>'))+'</div></div><div class="list-row-actions">'+(r.fileData?'<button class="btn-gold btn-sm" onclick="previewFileRaw(\''+r.fileData+'\',\''+r.fileName+'\',\''+r.fileMime+'\')">👁 Voir</button>':'')+(r.note!==null?'<span class="note-badge" style="color:'+(r.note>=10?'var(--green)':'var(--red)')+'">'+r.note+'/20</span>':'')+'<button class="btn-primary btn-sm" onclick="openNoter('+r.id+')">'+(r.note!==null?'Modifier':'Corriger')+'</button><button class="btn-danger btn-sm" onclick="supprimerRendu('+r.id+')">🗑</button></div></div>';
     }).join(''):emptyState('📥','Aucun travail rendu');
 
     document.getElementById('prof-travaux-list').innerHTML=html;
@@ -834,22 +845,66 @@ async function renderGestionEleves(){
   var classes=['Toutes','Terminale Bac Pro','1ère Bac Pro','2nde Bac Pro'];
   var filtreActif=window._filtreClasse||'Toutes';
   var elevesFiltres=filtreActif==='Toutes'?eleves:eleves.filter(function(e){return e.classe===filtreActif;});
-  document.getElementById('prof-eleves-list').innerHTML='<div class="chip-group">'+classes.map(function(c){return'<div class="chip '+(filtreActif===c?'active':'')+'" onclick="filtreClasse(\''+c+'\')">'+c+' ('+(c==='Toutes'?eleves.length:eleves.filter(function(e){return e.classe===c;}).length)+')</div>';}).join('')+'</div>'+(elevesFiltres.length?'<table class="result-detail-table"><thead><tr><th>Élève</th><th>Identifiant</th><th>Classe</th><th>Mot de passe</th><th>Actions</th></tr></thead><tbody>'+elevesFiltres.map(function(e){var col=e.classe==='Terminale Bac Pro'?'var(--red)':e.classe==='1ère Bac Pro'?'var(--blue)':'var(--green)';return'<tr><td><div style="display:flex;align-items:center;gap:8px"><div class="user-avatar" style="width:28px;height:28px;font-size:10px">'+e.initiales+'</div>'+e.nom+'</div></td><td style="font-family:var(--font-mono);font-size:12px">'+e.id+'</td><td><span style="font-size:12px;font-weight:600;color:'+col+'">'+(e.classe||'–')+'</span></td><td style="font-family:var(--font-mono);font-size:12px">'+e.pw+'</td><td><button class="btn-danger btn-sm" onclick="deleteEleve(\''+e.id+'\')">Supprimer</button></td></tr>';}).join('')+'</tbody></table>':emptyState('👥','Aucun élève dans cette classe'));
+  document.getElementById('prof-eleves-list').innerHTML='<div class="chip-group">'+classes.map(function(c){return'<div class="chip '+(filtreActif===c?'active':'')+'" onclick="filtreClasse(\''+c+'\')">'+c+' ('+(c==='Toutes'?eleves.length:eleves.filter(function(e){return e.classe===c;}).length)+')</div>';}).join('')+'</div>'+(elevesFiltres.length?'<table class="result-detail-table"><thead><tr><th>Élève</th><th>Identifiant</th><th>Classe</th><th>Mot de passe</th><th>Actions</th></tr></thead><tbody>'+elevesFiltres.map(function(e){var col=e.classe==='Terminale Bac Pro'?'var(--red)':e.classe==='1ère Bac Pro'?'var(--blue)':'var(--green)';return'<tr><td><div style="display:flex;align-items:center;gap:8px"><div class="user-avatar" style="width:28px;height:28px;font-size:10px">'+e.initiales+'</div>'+e.nom+'</div></td><td style="font-family:var(--font-mono);font-size:12px">'+e.id+'</td><td><span style="font-size:12px;font-weight:600;color:'+col+'">'+(e.classe||'–')+'</span></td><td style="font-family:var(--font-mono);font-size:12px">'+e.pw+'</td><td><button class="btn-secondary btn-sm" onclick="openEditEleve(\''+e.id+'\')">Modifier</button> <button class="btn-danger btn-sm" onclick="deleteEleve(\''+e.id+'\')">Supprimer</button></td></tr>';}).join('')+'</tbody></table>':emptyState('👥','Aucun élève dans cette classe'));
 }
 
 function filtreClasse(c){window._filtreClasse=c;renderGestionEleves();}
 document.addEventListener('DOMContentLoaded',function(){var p=document.getElementById('ae-prenom'),n=document.getElementById('ae-nom');if(p)p.addEventListener('input',updateAeId);if(n)n.addEventListener('input',updateAeId);});
-function updateAeId(){var p=(document.getElementById('ae-prenom').value||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'');var n=(document.getElementById('ae-nom').value||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'');document.getElementById('ae-id').value=p&&n?p+'.'+n:'';}
+function updateAeId(){if(_editEleveId)return;var p=(document.getElementById('ae-prenom').value||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'');var n=(document.getElementById('ae-nom').value||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'');document.getElementById('ae-id').value=p&&n?p+'.'+n:'';}
+
+// Édition d'un compte élève : on réutilise la même fenêtre que la création.
+// L'identifiant, lui, n'est jamais modifié — les résultats déjà enregistrés y sont rattachés.
+var _editEleveId=null;
+
+function openEditEleve(id){
+  var e=DB.getUser(id);
+  if(!e){showToast('Élève introuvable','error');return;}
+  _editEleveId=id;
+  showModal('modal-add-eleve');
+  document.getElementById('ae-prenom').value=e.prenom||'';
+  var nomFamille=(e.nom||'').replace(new RegExp('^'+(e.prenom||'')+'\\s*'),'');
+  document.getElementById('ae-nom').value=nomFamille;
+  document.getElementById('ae-id').value=e.id;
+  document.getElementById('ae-classe').value=e.classe||'2nde Bac Pro';
+  document.getElementById('ae-pw').value=e.pw||'';
+  var modal=document.getElementById('modal-add-eleve');
+  var titre=modal.querySelector('.modal-header h3');if(titre)titre.textContent='Modifier l\'élève';
+  var btn=modal.querySelector('.modal-actions .btn-primary');if(btn)btn.textContent='Enregistrer';
+  var lab=document.getElementById('ae-id').previousElementSibling;
+  if(lab)lab.textContent='Identifiant (inchangé)';
+}
+
+function resetEleveModal(){
+  _editEleveId=null;
+  var modal=document.getElementById('modal-add-eleve');
+  if(!modal)return;
+  ['ae-prenom','ae-nom','ae-id'].forEach(function(f){var el=document.getElementById(f);if(el)el.value='';});
+  var pw=document.getElementById('ae-pw');if(pw)pw.value='eleve123';
+  var titre=modal.querySelector('.modal-header h3');if(titre)titre.textContent='Ajouter un élève';
+  var btn=modal.querySelector('.modal-actions .btn-primary');if(btn)btn.textContent='Créer le compte';
+  var lab=document.getElementById('ae-id').previousElementSibling;
+  if(lab)lab.textContent='Identifiant (généré automatiquement)';
+}
 
 async function addEleve(){
   var id=document.getElementById('ae-id').value.trim();
   var prenom=document.getElementById('ae-prenom').value.trim();
   var nom=document.getElementById('ae-nom').value.trim();
   if(!id||!prenom||!nom){showToast('Remplissez prénom et nom','error');return;}
-  if(DB.getUser(id)){showToast('Identifiant déjà utilisé','error');return;}
   var classe=document.getElementById('ae-classe').value;
+  var pw=document.getElementById('ae-pw').value||'eleve123';
+  var fiche={id:id,nom:prenom+' '+nom,prenom:prenom,initiales:(prenom[0]+nom[0]).toUpperCase(),role:'eleve',pw:pw,classe:classe};
+  if(_editEleveId){
+    try{
+      fiche.id=_editEleveId;
+      await DB.updateUser(fiche);
+      _editEleveId=null;closeAllModals();renderGestionEleves();showToast('✅ Compte modifié : '+fiche.id,'success');
+    }catch(e){console.error(e);showToast('Erreur : modification non enregistrée','error');}
+    return;
+  }
+  if(DB.getUser(id)){showToast('Identifiant déjà utilisé','error');return;}
   try{
-    await DB.addUser({id:id,nom:prenom+' '+nom,prenom:prenom,initiales:(prenom[0]+nom[0]).toUpperCase(),role:'eleve',pw:document.getElementById('ae-pw').value||'eleve123',classe:classe});
+    await DB.addUser(fiche);
     closeAllModals();renderGestionEleves();showToast('✅ Compte créé : '+id,'success');
   }catch(e){showToast('Erreur : compte non enregistré (vérifiez la connexion internet)','error');}
 }
@@ -886,7 +941,8 @@ function showModal(id){
   if(id==='modal-add-cours'){pendingCoursFile=null;var l=document.getElementById('nc-file-label');if(l)l.textContent='';setupDropZone('nc-drop-zone','nc-file-input','nc-file-label',function(f){pendingCoursFile=f;});}
   if(id==='modal-add-exercice'){pendingExerciceFile=null;var l2=document.getElementById('ne-file-label');if(l2)l2.textContent='';setupDropZone('ne-drop-zone','ne-file-input','ne-file-label',function(f){pendingExerciceFile=f;});}
   if(id==='modal-add-devoir'){pendingDevoirFile=null;var l3=document.getElementById('nd-file-label');if(l3)l3.textContent='';setupDropZone('nd-drop-zone','nd-file-input','nd-file-label',function(f){pendingDevoirFile=f;});}
-}function closeAllModals(){document.getElementById('modal-overlay').classList.add('hidden');document.querySelectorAll('.modal').forEach(function(m){m.classList.add('hidden');});}
+  if(id==='modal-add-eleve'&&!_editEleveId){resetEleveModal();}
+}function closeAllModals(){document.getElementById('modal-overlay').classList.add('hidden');document.querySelectorAll('.modal').forEach(function(m){m.classList.add('hidden');});if(_editEleveId)resetEleveModal();}
 
 // TOAST
 var toastTimeout;

@@ -228,6 +228,16 @@ const DB = {
     });
     _users.push(user);
   },
+  async updateUser(user) {
+    if (!_session) throw new Error('Session professeur expirée — reconnectez-vous.');
+    await SB.rpc('dl_update_eleve', {
+      p_id: _session.id, p_pw: _session.pw,
+      e_id: user.id, e_nom: user.nom, e_prenom: user.prenom,
+      e_initiales: user.initiales, e_pw: user.pw, e_classe: user.classe
+    });
+    const i = _users.findIndex(u => u.id === user.id);
+    if (i >= 0) _users[i] = Object.assign({}, _users[i], user);
+  },
   async removeUser(id) {
     if (!_session) throw new Error('Session professeur expirée — reconnectez-vous.');
     await SB.rpc('dl_remove_eleve', { p_id: _session.id, p_pw: _session.pw, e_id: id });
