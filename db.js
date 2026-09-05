@@ -49,6 +49,16 @@ const SB = {
     if (!r.ok) throw new Error('DELETE ' + table);
   },
 
+  // Appelle une fonction sécurisée de la base (les comptes ne sont accessibles
+  // que par ce chemin : la table "users" n'est plus lisible directement).
+  async rpc(fn, args) {
+    const r = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + fn, {
+      method: 'POST', headers: this.headers, body: JSON.stringify(args || {})
+    });
+    if (!r.ok) { const e = await r.text(); throw new Error('RPC ' + fn + ': ' + e); }
+    return r.json();
+  },
+
   // Insère ou met à jour une ligne selon une contrainte d'unicité
   async upsert(table, item, onConflict) {
     const h = Object.assign({}, this.headers, { 'Prefer': 'return=representation,resolution=merge-duplicates' });
@@ -100,80 +110,44 @@ const SB = {
   }
 };
 
-// ===== Utilisateurs — table "users" dans Supabase (partagée par tous les appareils) =====
-// Ancien stockage local (gardé en secours hors-ligne + pour migrer automatiquement
-// les comptes déjà créés sur cet appareil avant la mise à jour).
-const USERS_KEY = 'doughlab_users_v2';
-let _users = [
-  { id: 'severine.rose', nom: 'Mme Rosé', prenom: 'Séverine', initiales: 'SR', role: 'prof', pw: 'Sr31107155!!!', classe: null }
-];
+// ===== Utilisateurs — table "users" protégée dans Supabase =====
+// La table n'est plus lisible ni modifiable directement avec la clé publique.
+// Tout passe par des fonctions sécurisées de la base (dl_login, dl_list_eleves,
+// dl_add_eleve, dl_remove_eleve), qui vérifient les identifiants avant de
+// répondre. Aucun mot de passe n'est donc plus stocké ni exposé côté navigateur.
 
-// Sauvegarde locale de secours. IMPORTANT : cette fonction ne doit JAMAIS faire
-// disparaître un compte déjà présent en local (sinon un compte qui n'a pas pu
-// être envoyé vers Supabase serait définitivement perdu). On fusionne donc
-// toujours avec ce qui est déjà stocké sur l'appareil.
-function saveUsersLocalBackup() {
-  try {
-    let local = [];
-    try { local = JSON.parse(localStorage.getItem(USERS_KEY) || '[]'); } catch(e) { local = []; }
-    if (!Array.isArray(local)) local = [];
-    const merged = _users.slice();
-    local.forEach(u => {
-      if (u && u.id && !merged.find(x => x.id === u.id)) merged.push(u);
-    });
-    localStorage.setItem(USERS_KEY, JSON.stringify(merged));
-  } catch(e) {}
+let _users = [];      // cache en mémoire, rempli après la connexion
+let _session = null;  // identifiants du professeur connecté (mémoire vive uniquement)
+
+// Connexion : la base ne renvoie le compte que si identifiant ET mot de passe
+// correspondent. Renvoie null si le couple est invalide.
+async function loginUser(id, pw) {
+  const rows = await SB.rpc('dl_login', { p_id: id, p_pw: pw });
+  const u = Array.isArray(rows) ? rows[0] : rows;
+  if (!u || !u.id) return null;
+  _users = [u].concat(_users.filter(x => x.id !== u.id));
+  if (u.role === 'prof') {
+    _session = { id: id, pw: pw };
+    try { await refreshEleves(); }
+    catch(e) { console.error('Chargement de la liste des élèves impossible :', e); }
+  }
+  return u;
 }
 
-// Migre vers Supabase les comptes qui n'existent que dans le stockage local de cet
-// appareil (créés avant la correction, ou créés hors-ligne).
-let _migrationErrors = [];
-async function _migrateLocalUsers() {
-  _migrationErrors = [];
-  let local = [];
-  try { local = JSON.parse(localStorage.getItem(USERS_KEY) || '[]'); } catch(e) { return; }
-  if (!Array.isArray(local)) return;
-  for (const u of local) {
-    if (u && u.id && !_users.find(x => x.id === u.id)) {
-      try {
-        await SB.insert('users', u);
-        _users.push(u);
-      } catch(e) {
-        // Échec d'envoi : on garde quand même le compte utilisable sur cet
-        // appareil, et on retentera au prochain chargement.
-        _users.push(u);
-        _migrationErrors.push(u.id);
-        console.error('Migration du compte ' + u.id + ' impossible :', e);
-      }
-    }
-  }
-  if (_migrationErrors.length) {
-    console.warn('Comptes non synchronisés avec Supabase (conservés en local) : ' + _migrationErrors.join(', '));
+// Recharge la liste des élèves (réservée au professeur connecté).
+async function refreshEleves() {
+  if (!_session) return;
+  const rows = await SB.rpc('dl_list_eleves', { p_id: _session.id, p_pw: _session.pw });
+  if (Array.isArray(rows)) {
+    const profs = _users.filter(u => u.role === 'prof');
+    _users = profs.concat(rows);
   }
 }
 
-// Charge les comptes depuis Supabase au démarrage. Tant que cette promesse n'est
-// pas résolue, DB.getUser()/DB.getEleves() peuvent encore renvoyer les valeurs par
-// défaut ci-dessus (utile hors-ligne) — le login attend explicitement ce chargement.
-const _usersReady = (async function loadUsers() {
-  try {
-    const remote = await SB.get('users');
-    if (Array.isArray(remote)) {
-      // Fusionne avec les valeurs par défaut au lieu de les remplacer, pour que le
-      // compte professeur reste toujours accessible même si sa ligne manque côté Supabase.
-      const merged = _users.slice();
-      remote.forEach(u => {
-        const idx = merged.findIndex(x => x.id === u.id);
-        if (idx >= 0) merged[idx] = u; else merged.push(u);
-      });
-      _users = merged;
-    }
-  } catch(e) {
-    console.error('Chargement des comptes distants impossible (hors-ligne ?), utilisation du secours local.', e);
-  }
-  await _migrateLocalUsers();
-  saveUsersLocalBackup();
-})();
+function logoutUser() {
+  _session = null;
+  _users = [];
+}
 
 // ===== Résultats et progression — tables Supabase (partagées par tous les appareils) =====
 // Un cache en mémoire permet aux fonctions de lecture de rester synchrones (comme
@@ -238,20 +212,26 @@ function setProgressionCours(eleveId, coursId, pct) {
 
 // Interface DB unifiée
 const DB = {
-  ready: () => Promise.all([_usersReady, _dataReady]),
+  ready: () => _dataReady,
   refresh: () => _loadResultats(),
-  migrationErrors: () => _migrationErrors.slice(),
+  login: loginUser,
+  logout: logoutUser,
+  refreshEleves: refreshEleves,
   getUser: id => _users.find(u => u.id === id) || null,
   getEleves: () => _users.filter(u => u.role === 'eleve'),
   async addUser(user) {
-    await SB.insert('users', user);
+    if (!_session) throw new Error('Session professeur expirée — reconnectez-vous.');
+    await SB.rpc('dl_add_eleve', {
+      p_id: _session.id, p_pw: _session.pw,
+      e_id: user.id, e_nom: user.nom, e_prenom: user.prenom,
+      e_initiales: user.initiales, e_pw: user.pw, e_classe: user.classe
+    });
     _users.push(user);
-    saveUsersLocalBackup();
   },
   async removeUser(id) {
-    await SB.delete('users', id);
+    if (!_session) throw new Error('Session professeur expirée — reconnectez-vous.');
+    await SB.rpc('dl_remove_eleve', { p_id: _session.id, p_pw: _session.pw, e_id: id });
     _users = _users.filter(u => u.id !== id);
-    saveUsersLocalBackup();
   },
   getResultatsEleve,
   addResultat,

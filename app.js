@@ -15,11 +15,18 @@ async function doLogin(){
   var role=window.loginRole||'eleve';
   var btn=document.querySelector('.btn-login');
   if(btn){btn.disabled=true;btn.textContent='Connexion…';}
-  try{ await DB.ready(); }catch(e){}
+  var user=null;
+  try{
+    user=await DB.login(id,pw);
+    await DB.ready();
+  }catch(e){
+    console.error(e);
+    if(btn){btn.disabled=false;btn.textContent='Se connecter →';}
+    showLoginError('Connexion impossible. Vérifiez votre connexion internet.');
+    return;
+  }
   if(btn){btn.disabled=false;btn.textContent='Se connecter →';}
-  var user=DB.getUser(id);
-  if(!user){showLoginError('Identifiant introuvable.');return;}
-  if(user.pw!==pw){showLoginError('Mot de passe incorrect.');return;}
+  if(!user){showLoginError('Identifiant ou mot de passe incorrect.');return;}
   if(user.role!==role){showLoginError('Rôle incorrect.');return;}
   currentUser=user;
   document.getElementById('login-error').classList.remove('show');
@@ -29,7 +36,7 @@ async function doLogin(){
 }
 
 function showLoginError(msg){var el=document.getElementById('login-error');el.textContent=msg;el.classList.add('show');}
-function doLogout(){currentUser=null;stopExamTimer();document.getElementById('app').classList.add('hidden');document.getElementById('login-screen').classList.remove('hidden');document.getElementById('login-id').value='';document.getElementById('login-pw').value='';document.getElementById('login-error').classList.remove('show');}
+function doLogout(){currentUser=null;try{DB.logout();}catch(e){}stopExamTimer();document.getElementById('app').classList.add('hidden');document.getElementById('login-screen').classList.remove('hidden');document.getElementById('login-id').value='';document.getElementById('login-pw').value='';document.getElementById('login-error').classList.remove('show');}
 function hardReset(){if(confirm('Réinitialiser ?')){localStorage.clear();location.reload(true);}}
 
 function initApp(){
@@ -821,7 +828,8 @@ async function saveNote(){
 }
 
 // PROF : ÉLÈVES
-function renderGestionEleves(){
+async function renderGestionEleves(){
+  try{ await DB.refreshEleves(); }catch(e){ console.error(e); }
   var eleves=DB.getEleves();
   var classes=['Toutes','Terminale Bac Pro','1ère Bac Pro','2nde Bac Pro'];
   var filtreActif=window._filtreClasse||'Toutes';
