@@ -169,9 +169,10 @@ async function renderExercices(){
     var all=await SB.get('exercices');
     var aujourd_hui=new Date().toISOString().slice(0,10);
     var exercices=all.filter(function(e){
-      if(currentUser.role==='prof') return e.type==='exercice';
       if(e.type!=='exercice') return false;
+      if(currentUser.role==='prof') return true;
       if(e.visible_from&&e.visible_from>aujourd_hui) return false;
+      if(e.classe&&e.classe!=='Toutes'&&e.classe!==currentUser.classe) return false;
       return true;
     });
     document.getElementById('exercices-grid').innerHTML=exercices.map(function(e){
@@ -193,13 +194,13 @@ async function startExercice(id){
 
     // Si fichier joint sans questions → afficher directement le fichier
     if(ex.fileData && qs.length===0){
-      document.getElementById('exercice-player').innerHTML='<div class="quiz-player"><div style="margin-bottom:16px"><h2 class="section-title">'+ex.titre+'</h2><p style="color:var(--text-mid);font-size:13px">'+ex.matiere+'</p></div>'+(ex.fileMime&&ex.fileMime.startsWith('image/')?'<img src="'+ex.fileData+'" style="max-width:100%;border-radius:var(--radius)">':ex.fileMime==='application/pdf'?'<iframe src="'+ex.fileData+'" style="width:100%;height:500px;border:none;border-radius:var(--radius)"></iframe>':'<div style="text-align:center;padding:32px"><div style="font-size:48px">📄</div><div style="margin:12px 0">'+ex.fileName+'</div><a href="'+ex.fileData+'" download="'+ex.fileName+'" class="btn-primary" style="text-decoration:none">⬇ Télécharger</a></div>')+'<div style="margin-top:16px"><button class="btn-secondary" onclick="renderExercices()">← Retour</button></div></div>';
+      document.getElementById('exercice-player').innerHTML='<div class="quiz-player"><div style="margin-bottom:16px"><h2 class="section-title">'+ex.titre+'</h2><p style="color:var(--text-mid);font-size:13px">'+ex.matiere+'</p></div>'+blocDocument(ex.fileData,ex.fileName,ex.fileMime,500)+'<div style="margin-top:16px"><button class="btn-secondary" onclick="renderExercices()">← Retour</button></div></div>';
       return;
     }
 
     // Si fichier joint ET questions → afficher le fichier puis les questions
     if(ex.fileData && qs.length>0){
-      document.getElementById('exercice-player').innerHTML='<div class="quiz-player"><div style="margin-bottom:16px"><h2 class="section-title">'+ex.titre+'</h2><p style="color:var(--text-mid);font-size:13px">'+ex.matiere+' · Document joint</p>'+(ex.fileMime==='application/pdf'?'<iframe src="'+ex.fileData+'" style="width:100%;height:300px;border:none;border-radius:var(--radius);margin-top:10px"></iframe>':ex.fileMime&&ex.fileMime.startsWith('image/')?'<img src="'+ex.fileData+'" style="max-width:100%;border-radius:var(--radius);margin-top:10px">':'<a href="'+ex.fileData+'" download="'+ex.fileName+'" class="btn-gold btn-sm" style="text-decoration:none;display:inline-block;margin-top:10px">📎 Télécharger le document</a>')+'</div><button class="btn-primary" onclick="startQuizPart(\''+id+'\')">Commencer le QCM →</button><button class="btn-secondary" onclick="renderExercices()" style="margin-left:8px">← Retour</button></div>';
+      document.getElementById('exercice-player').innerHTML='<div class="quiz-player"><div style="margin-bottom:16px"><h2 class="section-title">'+ex.titre+'</h2><p style="color:var(--text-mid);font-size:13px">'+ex.matiere+' · Document joint</p>'+blocDocument(ex.fileData,ex.fileName,ex.fileMime,300)+'</div><button class="btn-primary" onclick="startQuizPart(\''+id+'\')">Commencer le QCM →</button><button class="btn-secondary" onclick="renderExercices()" style="margin-left:8px">← Retour</button></div>';
       return;
     }
 
@@ -254,7 +255,7 @@ async function renderTravaux(){
         html+='<h2 class="section-title" style="margin-bottom:12px">Devoirs à rendre</h2>';
         aFaire.forEach(function(d){
           var late=new Date(d.deadline)<new Date();
-          html+='<div class="devoir-card"><div class="devoir-card-header"><div><div class="devoir-card-title">'+d.titre+'</div><div class="devoir-card-meta">Avant le '+formatDate(d.deadline)+'</div></div><span class="tag '+(late?'tag-urgent':'')+'" style="'+(!late?'background:var(--green-light);color:var(--green)':'')+'">'+(late?'En retard':'À rendre')+'</span></div><div class="devoir-card-consignes">'+d.consignes+'</div>'+(d.url?'<div style="margin-bottom:10px"><a href="'+d.url+'" target="_blank" class="btn-gold btn-sm" style="text-decoration:none;display:inline-block">🔗 Ouvrir le lien</a></div>':'')+(d.fileData?'<div style="margin-bottom:10px"><a href="'+d.fileData+'" download="'+d.fileName+'" class="btn-gold btn-sm" style="text-decoration:none;display:inline-block">📎 Télécharger le document</a></div>':'')+'<div class="upload-zone" onclick="ouvrirUploadEleve(\''+d.id+'\')"><div class="upload-zone-icon">📤</div><div style="font-weight:500">Déposer votre travail</div><div style="font-size:12px;margin-top:4px;color:var(--text-light)">PDF, Word, image – max 4 Mo</div></div></div>';
+          html+='<div class="devoir-card"><div class="devoir-card-header"><div><div class="devoir-card-title">'+d.titre+'</div><div class="devoir-card-meta">Avant le '+formatDate(d.deadline)+'</div></div><span class="tag '+(late?'tag-urgent':'')+'" style="'+(!late?'background:var(--green-light);color:var(--green)':'')+'">'+(late?'En retard':'À rendre')+'</span></div><div class="devoir-card-consignes">'+d.consignes+'</div>'+(d.url?'<div style="margin-bottom:10px"><a href="'+d.url+'" target="_blank" class="btn-gold btn-sm" style="text-decoration:none;display:inline-block">🔗 Ouvrir le lien</a></div>':'')+(d.fileData?'<div style="margin-bottom:10px">'+blocDocument(d.fileData,d.fileName,d.fileMime,300)+'</div>':'')+'<div class="upload-zone" onclick="ouvrirUploadEleve(\''+d.id+'\')"><div class="upload-zone-icon">📤</div><div style="font-weight:500">Déposer votre travail</div><div style="font-size:12px;margin-top:4px;color:var(--text-light)">PDF, Word, image – max 4 Mo</div></div></div>';
         });
       }
       if(faits.length){
@@ -319,9 +320,10 @@ async function renderExamens(){
     var all=await SB.get('exercices');
     var aujourd_hui=new Date().toISOString().slice(0,10);
     var examens=all.filter(function(e){
-      if(currentUser.role==='prof') return e.type==='examen';
       if(e.type!=='examen') return false;
+      if(currentUser.role==='prof') return true;
       if(e.visible_from&&e.visible_from>aujourd_hui) return false;
+      if(e.classe&&e.classe!=='Toutes'&&e.classe!==currentUser.classe) return false;
       return true;
     });
     document.getElementById('examens-grid').innerHTML=examens.map(function(e){
@@ -377,9 +379,7 @@ async function startExamConfirmed(){
       // Afficher le document avec chronomètre
       var ressource='';
       if(ex.fileData){
-        if(ex.fileMime==='application/pdf') ressource='<iframe src="'+ex.fileData+'" style="width:100%;height:450px;border:none;border-radius:var(--radius)"></iframe>';
-        else if(ex.fileMime&&ex.fileMime.startsWith('image/')) ressource='<img src="'+ex.fileData+'" style="max-width:100%;border-radius:var(--radius)">';
-        else ressource='<a href="'+ex.fileData+'" download="'+ex.fileName+'" class="btn-primary" style="text-decoration:none;display:inline-block">📎 Télécharger le document</a>';
+          ressource=blocDocument(ex.fileData,ex.fileName,ex.fileMime,450);
       }
       if(ex.url) ressource+='<div style="margin-top:12px"><a href="'+ex.url+'" target="_blank" class="btn-gold btn-sm" style="text-decoration:none;display:inline-block">🔗 Ouvrir la ressource</a></div>';
       document.getElementById('exam-player').innerHTML=
@@ -413,9 +413,7 @@ async function previewExamen(id){
     document.getElementById('exam-player').classList.remove('hidden');
     var ressource='';
     if(ex.fileData){
-      if(ex.fileMime==='application/pdf') ressource='<iframe src="'+ex.fileData+'" style="width:100%;height:250px;border:none;border-radius:var(--radius);margin-bottom:16px"></iframe>';
-      else if(ex.fileMime&&ex.fileMime.startsWith('image/')) ressource='<img src="'+ex.fileData+'" style="max-width:100%;border-radius:var(--radius);margin-bottom:16px">';
-      else ressource='<a href="'+ex.fileData+'" download="'+ex.fileName+'" class="btn-gold btn-sm" style="text-decoration:none;display:inline-block;margin-bottom:16px">📎 '+ex.fileName+'</a>';
+      ressource='<div style="margin-bottom:16px">'+blocDocument(ex.fileData,ex.fileName,ex.fileMime,250)+'</div>';
     }
     if(ex.url) ressource+='<div style="margin-bottom:16px"><a href="'+ex.url+'" target="_blank" class="btn-gold btn-sm" style="text-decoration:none;display:inline-block">🔗 Lien ressource</a></div>';
     document.getElementById('exam-player').innerHTML=
@@ -451,13 +449,7 @@ function renderExamQuestion(){
   // Afficher document ou lien si présent
   var ressource='';
   if(ex.fileData){
-    if(ex.fileMime==='application/pdf'){
-      ressource='<div style="margin-bottom:16px"><iframe src="'+ex.fileData+'" style="width:100%;height:250px;border:none;border-radius:var(--radius)"></iframe></div>';
-    } else if(ex.fileMime&&ex.fileMime.startsWith('image/')){
-      ressource='<div style="margin-bottom:16px"><img src="'+ex.fileData+'" style="max-width:100%;border-radius:var(--radius)"></div>';
-    } else {
-      ressource='<div style="margin-bottom:16px"><a href="'+ex.fileData+'" download="'+ex.fileName+'" class="btn-gold btn-sm" style="text-decoration:none;display:inline-block">📎 Télécharger le document</a></div>';
-    }
+    ressource='<div style="margin-bottom:16px">'+blocDocument(ex.fileData,ex.fileName,ex.fileMime,250)+'</div>';
   }
   if(ex.url){
     ressource+='<div style="margin-bottom:16px"><a href="'+ex.url+'" target="_blank" class="btn-gold btn-sm" style="text-decoration:none;display:inline-block">🔗 Ouvrir la ressource</a></div>';
@@ -655,6 +647,42 @@ async function addCours(){
   }catch(e){console.error(e);showToast('Erreur ajout cours : '+e.message,'error');}
 }
 
+
+// ===== DOCUMENTS JOINTS =====
+// Safari (iPad, iPhone) n'affiche que la première page d'un PDF inséré dans la
+// page et refuse le téléchargement direct. On propose donc toujours l'ouverture
+// du document dans un nouvel onglet, où toutes les pages sont lisibles et où le
+// bouton Partager permet de l'enregistrer.
+function estIOS(){
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+         (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+}
+function urlTelechargement(url,nom){
+  if(!url||url.indexOf('http')!==0) return url;
+  return url+(url.indexOf('?')>=0?'&':'?')+'download='+encodeURIComponent(nom||'document');
+}
+function blocDocument(url,nom,mime,hauteur){
+  if(!url) return '';
+  nom = nom||'document';
+  var estPdf = mime==='application/pdf' || /\.pdf($|\?)/i.test(url);
+  var estImage = mime && mime.indexOf('image/')===0;
+  var boutons='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">'+
+    '<a href="'+url+'" target="_blank" rel="noopener" class="btn-primary" style="text-decoration:none;display:inline-block">📄 Ouvrir le document</a>'+
+    '<a href="'+urlTelechargement(url,nom)+'" target="_blank" rel="noopener" class="btn-gold btn-sm" style="text-decoration:none;display:inline-block">⬇ Enregistrer</a>'+
+    '</div>';
+  if(estImage) return '<img src="'+url+'" style="max-width:100%;border-radius:var(--radius)">'+boutons;
+  if(estPdf){
+    if(estIOS()){
+      return '<div style="background:var(--cream-dark);border-radius:var(--radius);padding:18px;text-align:center">'+
+        '<div style="font-size:34px">📄</div><div style="margin:8px 0;font-weight:500">'+nom+'</div>'+
+        '<div style="font-size:12px;color:var(--text-mid);line-height:1.5">Sur iPad et iPhone, appuyez sur « Ouvrir le document » pour lire toutes les pages, puis sur le bouton Partager pour l\'enregistrer.</div>'+
+        boutons+'</div>';
+    }
+    return '<iframe src="'+url+'" style="width:100%;height:'+(hauteur||500)+'px;border:none;border-radius:var(--radius)"></iframe>'+boutons;
+  }
+  return '<div style="text-align:center;padding:24px"><div style="font-size:40px">📄</div><div style="margin:10px 0">'+nom+'</div>'+boutons+'</div>';
+}
+
 // FICHIERS
 function readFileAsBase64(file){return new Promise(function(resolve,reject){var r=new FileReader();r.onload=function(e){resolve(e.target.result);};r.onerror=reject;r.readAsDataURL(file);});}
 function formatSize(b){if(b<1024)return b+' o';if(b<1048576)return(b/1024).toFixed(0)+' Ko';return(b/1048576).toFixed(1)+' Mo';}
@@ -663,17 +691,9 @@ function handleDropFile(file,labelId,onFile){if(file.size>20*1024*1024){showToas
 function previewFileRaw(fileData,fileName,fileMime){
   var content=document.getElementById('modal-preview-content');
   document.getElementById('modal-preview-title').textContent=fileName||'Fichier';
-  // Détecter si c'est une URL Storage ou base64
-  var isUrl=fileData&&fileData.startsWith('http');
-  if(fileMime&&fileMime.startsWith('image/')){
-    content.innerHTML='<img src="'+fileData+'" style="max-width:100%;border-radius:var(--radius)">';
-  } else if(fileMime==='application/pdf'){
-    content.innerHTML='<iframe src="'+fileData+'" style="width:100%;height:500px;border:none;border-radius:var(--radius)"></iframe>';
-  } else {
-    content.innerHTML='<div style="text-align:center;padding:32px"><div style="font-size:48px">📄</div><div style="margin:12px 0">'+fileName+'</div><a href="'+fileData+'" '+(isUrl?'target="_blank"':'download="'+fileName+'"')+' class="btn-primary" style="text-decoration:none">'+(isUrl?'🔗 Ouvrir':'⬇ Télécharger')+'</a></div>';
-  }
-  document.getElementById('modal-preview-dl').href=fileData;
-  document.getElementById('modal-preview-dl').download=fileName||'document';
+  content.innerHTML=blocDocument(fileData,fileName,fileMime,500);
+  var dl=document.getElementById('modal-preview-dl');
+  if(dl){dl.href=urlTelechargement(fileData,fileName);dl.target='_blank';dl.removeAttribute('download');}
   showModal('modal-preview');
 }
 async function previewFileSB(id,table){try{var item=await SB.getById(table,id);if(!item||!item.fileData){showToast('Aucun fichier joint','error');return;}previewFileRaw(item.fileData,item.fileName,item.fileMime||'application/octet-stream');}catch(e){showToast('Erreur','error');}}
@@ -684,6 +704,13 @@ async function renderGestionExercices(){
   try{
     await DB.refresh();
     var exercices=await SB.get('exercices');
+    var ordreClasse={'Toutes':0,'2nde Bac Pro':1,'1ère Bac Pro':2,'Terminale Bac Pro':3};
+    exercices.sort(function(a,b){
+      var oa=ordreClasse[a.classe||'Toutes']||0,ob=ordreClasse[b.classe||'Toutes']||0;
+      if(oa!==ob)return oa-ob;
+      if((a.type||'')!==(b.type||''))return (a.type||'').localeCompare(b.type||'');
+      return (a.titre||'').localeCompare(b.titre||'','fr');
+    });
     var eleves=DB.getEleves();
     var html='';
     for(var i=0;i<exercices.length;i++){
@@ -699,7 +726,10 @@ async function renderGestionExercices(){
       var moyEx=nbFait?(resultatsEx.reduce(function(s,r){return s+(r.res.score/r.res.total)*20;},0)/nbFait).toFixed(1):'–';
       var aujourd_hui=new Date().toISOString().slice(0,10);
       var programmeBadge=e.visible_from&&e.visible_from>aujourd_hui?'<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--orange-light);color:var(--orange);font-weight:600;margin-left:4px">⏳ Visible le '+formatDate(e.visible_from)+'</span>':'';
-      html+='<div class="list-row" style="flex-wrap:wrap;gap:8px"><div class="list-row-icon" style="background:'+(e.type==='examen'?'var(--red-light)':'var(--blue-light)')+'"> '+(e.type==='examen'?'📋':'✏️')+'</div><div class="list-row-info"><div class="list-row-title">'+e.titre+programmeBadge+'</div><div class="list-row-sub">'+e.matiere+' · '+qs.length+' questions'+(e.duree?' · '+e.duree+' min':'')+(e.fileName?' · <span style="color:var(--green)">📎 '+e.fileName+'</span>':'')+'</div>'+(nbFait>0?'<div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap">'+resultatsEx.map(function(r){var n=((r.res.score/r.res.total)*20).toFixed(0);return'<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:'+(parseInt(n)>=10?'var(--green-light)':'var(--red-light)')+';color:'+(parseInt(n)>=10?'var(--green)':'var(--red)')+'">'+r.eleve.prenom+' : '+n+'/20</span>';}).join('')+'</div>':'<div style="margin-top:4px;font-size:12px;color:var(--text-light)">Aucun élève n\'a encore fait cet exercice</div>')+'</div><div class="list-row-actions" style="align-self:flex-start">'+(e.fileData?'<button class="btn-gold btn-sm" onclick="previewFileSB('+e.id+',\'exercices\')">👁 Voir</button>':'')+'<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:var(--cream-dark)">'+nbFait+'/'+eleves.length+' élèves · moy. '+moyEx+'</span><span class="card-badge '+(e.type==='examen'?'badge-examen':'badge-exercice')+'">'+e.type+'</span><button class="btn-danger btn-sm" onclick="deleteExercice('+e.id+')">Supprimer</button></div></div>';
+      var couleursClasse={'2nde Bac Pro':'var(--green)','1ère Bac Pro':'var(--blue)','Terminale Bac Pro':'var(--red)'};
+      var classeEx=e.classe||'Toutes';
+      var classeBadge='<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--cream-dark);color:'+(couleursClasse[classeEx]||'var(--text-light)')+';font-weight:600;margin-left:6px">'+(classeEx==='Toutes'?'Toutes les classes':classeEx)+'</span>';
+      html+='<div class="list-row" style="flex-wrap:wrap;gap:8px"><div class="list-row-icon" style="background:'+(e.type==='examen'?'var(--red-light)':'var(--blue-light)')+'"> '+(e.type==='examen'?'📋':'✏️')+'</div><div class="list-row-info"><div class="list-row-title">'+e.titre+classeBadge+programmeBadge+'</div><div class="list-row-sub">'+e.matiere+' · '+qs.length+' questions'+(e.duree?' · '+e.duree+' min':'')+(e.fileName?' · <span style="color:var(--green)">📎 '+e.fileName+'</span>':'')+'</div>'+(nbFait>0?'<div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap">'+resultatsEx.map(function(r){var n=((r.res.score/r.res.total)*20).toFixed(0);return'<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:'+(parseInt(n)>=10?'var(--green-light)':'var(--red-light)')+';color:'+(parseInt(n)>=10?'var(--green)':'var(--red)')+'">'+r.eleve.prenom+' : '+n+'/20</span>';}).join('')+'</div>':'<div style="margin-top:4px;font-size:12px;color:var(--text-light)">Aucun élève n\'a encore fait cet exercice</div>')+'</div><div class="list-row-actions" style="align-self:flex-start">'+(e.fileData?'<button class="btn-gold btn-sm" onclick="previewFileSB('+e.id+',\'exercices\')">👁 Voir</button>':'')+'<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:var(--cream-dark)">'+nbFait+'/'+eleves.length+' élèves · moy. '+moyEx+'</span><span class="card-badge '+(e.type==='examen'?'badge-examen':'badge-exercice')+'">'+e.type+'</span><button class="btn-danger btn-sm" onclick="deleteExercice('+e.id+')">Supprimer</button></div></div>';
     }
     document.getElementById('prof-exercices-list').innerHTML=html||emptyState('🎯','Aucun exercice');
   }catch(e){showErr('prof-exercices-list','Erreur chargement.');}
@@ -719,7 +749,7 @@ async function saveExercice(){
   if(!qs.length&&!pendingExerciceFile){showToast('Ajoutez au moins une question ou joignez un document','error');return;}
   var type=document.getElementById('ne-type').value;
   try{
-    var item={titre:titre,type:type,matiere:document.getElementById('ne-matiere').value,duree:type==='examen'?parseInt(document.getElementById('ne-duree').value):null,questions:qs.length?qs:[],url:document.getElementById('ne-url').value||null,visible_from:document.getElementById('ne-visible-from').value||null};
+    var item={titre:titre,type:type,classe:document.getElementById('ne-classe').value||'Toutes',matiere:document.getElementById('ne-matiere').value,duree:type==='examen'?parseInt(document.getElementById('ne-duree').value):null,questions:qs.length?qs:[],url:document.getElementById('ne-url').value||null,visible_from:document.getElementById('ne-visible-from').value||null};
     if(pendingExerciceFile&&pendingExerciceFile.file){
       showToast('⏳ Upload en cours…');
       var path='exercices/'+Date.now()+'_'+pendingExerciceFile.fileName.replace(/\s/g,'_');
