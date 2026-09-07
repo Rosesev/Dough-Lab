@@ -569,7 +569,12 @@ var categorieEmojis={'Vie scolaire':'🏫','Hygiène & Sécurité':'🧼','Fiche
 async function renderOutils(){
   loading('outils-content');
   try{
-    var outils=await SB.get('outils');
+    var tous=await SB.get('outils');
+    var outils=tous.filter(function(o){
+      if(currentUser.role==='prof') return true;
+      if(o.classe&&o.classe!=='Toutes'&&o.classe!==currentUser.classe) return false;
+      return true;
+    });
     if(!outils.length){document.getElementById('outils-content').innerHTML=emptyState('🧰','Aucun document disponible pour l\'instant');return;}
     var byCategorie={};
     outils.forEach(function(o){if(!byCategorie[o.categorie])byCategorie[o.categorie]=[];byCategorie[o.categorie].push(o);});
@@ -590,8 +595,18 @@ async function renderGestionOutils(){
   loading('gestion-outils-content');
   try{
     var outils=await SB.get('outils');
+    var ordreClasseOutil={'Toutes':0,'2nde Bac Pro':1,'1ère Bac Pro':2,'Terminale Bac Pro':3};
+    outils.sort(function(a,b){
+      var oa=ordreClasseOutil[a.classe||'Toutes']||0,ob=ordreClasseOutil[b.classe||'Toutes']||0;
+      if(oa!==ob)return oa-ob;
+      if((a.categorie||'')!==(b.categorie||''))return (a.categorie||'').localeCompare(b.categorie||'','fr');
+      return (a.titre||'').localeCompare(b.titre||'','fr');
+    });
+    var couleursClasseOutil={'2nde Bac Pro':'var(--green)','1ère Bac Pro':'var(--blue)','Terminale Bac Pro':'var(--red)'};
     document.getElementById('gestion-outils-content').innerHTML=outils.length?outils.map(function(o){
-      return'<div class="list-row"><div class="list-row-icon" style="background:'+(categorieColors[o.categorie]||'var(--cream-dark)')+'">'+( categorieEmojis[o.categorie]||'📄')+'</div><div class="list-row-info"><div class="list-row-title">'+o.titre+'</div><div class="list-row-sub">'+o.categorie+(o.description?' · '+o.description:'')+(o.fileName?' · <span style="color:var(--green)">📎 '+o.fileName+'</span>':'')+'</div></div><div class="list-row-actions">'+(o.fileData?'<button class="btn-gold btn-sm" onclick="previewFileRaw(\''+o.fileData+'\',\''+o.fileName+'\',\''+o.fileMime+'\')">👁 Voir</button>':'')+(o.url?'<a href="'+o.url+'" target="_blank" class="btn-secondary btn-sm" style="text-decoration:none">🔗</a>':'')+'<button class="btn-danger btn-sm" onclick="deleteOutil('+o.id+')">Supprimer</button></div></div>';
+      var classeOutil=o.classe||'Toutes';
+      var badgeClasse='<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--cream-dark);color:'+(couleursClasseOutil[classeOutil]||'var(--text-light)')+';font-weight:600;margin-left:6px">'+(classeOutil==='Toutes'?'Toutes les classes':classeOutil)+'</span>';
+      return'<div class="list-row"><div class="list-row-icon" style="background:'+(categorieColors[o.categorie]||'var(--cream-dark)')+'">'+( categorieEmojis[o.categorie]||'📄')+'</div><div class="list-row-info"><div class="list-row-title">'+o.titre+badgeClasse+'</div><div class="list-row-sub">'+o.categorie+(o.description?' · '+o.description:'')+(o.fileName?' · <span style="color:var(--green)">📎 '+o.fileName+'</span>':'')+'</div></div><div class="list-row-actions">'+(o.fileData?'<button class="btn-gold btn-sm" onclick="previewFileRaw(\''+o.fileData+'\',\''+o.fileName+'\',\''+o.fileMime+'\')">👁 Voir</button>':'')+(o.url?'<a href="'+o.url+'" target="_blank" class="btn-secondary btn-sm" style="text-decoration:none">🔗</a>':'')+'<button class="btn-danger btn-sm" onclick="deleteOutil('+o.id+')">Supprimer</button></div></div>';
     }).join(''):emptyState('🧰','Aucun document. Ajoutez-en un !');
   }catch(e){showErr('gestion-outils-content','Erreur chargement.');}
 }
@@ -602,7 +617,7 @@ async function addOutil(){
   var titre=document.getElementById('no-titre').value.trim();
   if(!titre){showToast('Veuillez saisir un titre','error');return;}
   try{
-    var item={titre:titre,categorie:document.getElementById('no-categorie').value,description:document.getElementById('no-description').value||null,url:document.getElementById('no-url').value||null};
+    var item={titre:titre,categorie:document.getElementById('no-categorie').value,classe:document.getElementById('no-classe').value||'Toutes',description:document.getElementById('no-description').value||null,url:document.getElementById('no-url').value||null};
     if(pendingOutilFile&&pendingOutilFile.file){
       showToast('⏳ Upload en cours…');
       var path='outils/'+Date.now()+'_'+pendingOutilFile.fileName.replace(/\s/g,'_');
@@ -967,7 +982,7 @@ async function addDevoir(){
 function showModal(id){
   document.getElementById('modal-overlay').classList.remove('hidden');
   document.getElementById(id).classList.remove('hidden');
-  if(id==='modal-add-outil'){pendingOutilFile=null;var lo=document.getElementById('no-file-label');if(lo)lo.textContent='';setupDropZone('no-drop-zone','no-file-input','no-file-label',function(f){pendingOutilFile=f;});}
+  if(id==='modal-add-outil'){pendingOutilFile=null;var nc=document.getElementById('no-classe');if(nc)nc.value='Toutes';var lo=document.getElementById('no-file-label');if(lo)lo.textContent='';setupDropZone('no-drop-zone','no-file-input','no-file-label',function(f){pendingOutilFile=f;});}
   if(id==='modal-add-cours'){pendingCoursFile=null;var l=document.getElementById('nc-file-label');if(l)l.textContent='';setupDropZone('nc-drop-zone','nc-file-input','nc-file-label',function(f){pendingCoursFile=f;});}
   if(id==='modal-add-exercice'){pendingExerciceFile=null;var l2=document.getElementById('ne-file-label');if(l2)l2.textContent='';setupDropZone('ne-drop-zone','ne-file-input','ne-file-label',function(f){pendingExerciceFile=f;});}
   if(id==='modal-add-devoir'){pendingDevoirFile=null;var l3=document.getElementById('nd-file-label');if(l3)l3.textContent='';setupDropZone('nd-drop-zone','nd-file-input','nd-file-label',function(f){pendingDevoirFile=f;});}
