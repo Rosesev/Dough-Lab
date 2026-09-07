@@ -32,19 +32,17 @@
       <button class="role-tab active" id="tab-eleve" onclick="window.loginRole='eleve';document.getElementById('tab-eleve').classList.add('active');document.getElementById('tab-prof').classList.remove('active');">Élève</button>
       <button class="role-tab" id="tab-prof" onclick="window.loginRole='prof';document.getElementById('tab-prof').classList.add('active');document.getElementById('tab-eleve').classList.remove('active');">Professeur</button>
     </div>
+    <form id="login-form" onsubmit="doLogin();return false;" autocomplete="on">
     <div class="form-group">
       <label>Identifiant</label>
       <div style="position:relative">
-        <input type="text" id="login-id" class="form-input" placeholder="prenom.nom" style="padding-right:42px">
-        <button type="button" onclick="togglePw('login-id','eye-id')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-light);padding:2px" title="Afficher / masquer">
-          <span id="eye-id">👁</span>
-        </button>
+        <input type="text" id="login-id" name="username" autocomplete="username" class="form-input" placeholder="prenom.nom" style="padding-right:42px">
       </div>
     </div>
     <div class="form-group">
       <label>Mot de passe</label>
       <div style="position:relative">
-        <input type="password" id="login-pw" class="form-input" placeholder="••••••••" style="padding-right:42px">
+        <input type="password" id="login-pw" name="password" autocomplete="current-password" class="form-input" placeholder="••••••••" style="padding-right:42px">
         <button type="button" onclick="togglePw('login-pw','eye-login')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-light);padding:2px" title="Afficher / masquer">
           <span id="eye-login">👁</span>
         </button>
@@ -52,7 +50,8 @@
       <div class="form-hint" id="login-hint"></div>
     </div>
     <div class="login-error" id="login-error"></div>
-    <button class="btn-login" onclick="doLogin()">Se connecter →</button>
+    <button type="submit" class="btn-login">Se connecter →</button>
+    </form>
     <div class="login-footer">Accès réservé aux élèves et enseignants inscrits</div>
     <div style="text-align:center;margin-bottom:12px">
       <button onclick="hardReset()" style="background:none;border:none;font-size:11px;color:var(--text-light);cursor:pointer;text-decoration:underline">🔄 Problème de connexion ? Cliquez ici pour réinitialiser</button>
