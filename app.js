@@ -563,8 +563,8 @@ async function renderResultats(){
 }
 
 // ===== BOÎTE À OUTILS =====
-var categorieColors={'Vie scolaire':'var(--blue-light)','Hygiène & Sécurité':'var(--green-light)','Fiches techniques':'var(--orange-light)','Réglementation':'#F5F0FD','Examens & diplômes':'var(--red-light)','Autre':'var(--cream-dark)'};
-var categorieEmojis={'Vie scolaire':'🏫','Hygiène & Sécurité':'🧼','Fiches techniques':'📋','Réglementation':'⚖️','Examens & diplômes':'🎓','Autre':'📄'};
+var categorieColors={'Vie scolaire':'var(--blue-light)','Hygiène & Sécurité':'var(--green-light)','Travaux pratiques':'var(--orange-light)','Réglementation':'#F5F0FD','Examens & diplômes':'var(--red-light)','Autre':'var(--cream-dark)'};
+var categorieEmojis={'Vie scolaire':'🏫','Hygiène & Sécurité':'🧼','Travaux pratiques':'👨‍🍳','Réglementation':'⚖️','Examens & diplômes':'🎓','Autre':'📄'};
 
 async function renderOutils(){
   loading('outils-content');
@@ -606,27 +606,75 @@ async function renderGestionOutils(){
     document.getElementById('gestion-outils-content').innerHTML=outils.length?outils.map(function(o){
       var classeOutil=o.classe||'Toutes';
       var badgeClasse='<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--cream-dark);color:'+(couleursClasseOutil[classeOutil]||'var(--text-light)')+';font-weight:600;margin-left:6px">'+(classeOutil==='Toutes'?'Toutes les classes':classeOutil)+'</span>';
-      return'<div class="list-row"><div class="list-row-icon" style="background:'+(categorieColors[o.categorie]||'var(--cream-dark)')+'">'+( categorieEmojis[o.categorie]||'📄')+'</div><div class="list-row-info"><div class="list-row-title">'+o.titre+badgeClasse+'</div><div class="list-row-sub">'+o.categorie+(o.description?' · '+o.description:'')+(o.fileName?' · <span style="color:var(--green)">📎 '+o.fileName+'</span>':'')+'</div></div><div class="list-row-actions">'+(o.fileData?'<button class="btn-gold btn-sm" onclick="previewFileRaw(\''+o.fileData+'\',\''+o.fileName+'\',\''+o.fileMime+'\')">👁 Voir</button>':'')+(o.url?'<a href="'+o.url+'" target="_blank" class="btn-secondary btn-sm" style="text-decoration:none">🔗</a>':'')+'<button class="btn-danger btn-sm" onclick="deleteOutil('+o.id+')">Supprimer</button></div></div>';
+      return'<div class="list-row"><div class="list-row-icon" style="background:'+(categorieColors[o.categorie]||'var(--cream-dark)')+'">'+( categorieEmojis[o.categorie]||'📄')+'</div><div class="list-row-info"><div class="list-row-title">'+o.titre+badgeClasse+'</div><div class="list-row-sub">'+o.categorie+(o.description?' · '+o.description:'')+(o.fileName?' · <span style="color:var(--green)">📎 '+o.fileName+'</span>':'')+'</div></div><div class="list-row-actions">'+(o.fileData?'<button class="btn-gold btn-sm" onclick="previewFileRaw(\''+o.fileData+'\',\''+o.fileName+'\',\''+o.fileMime+'\')">👁 Voir</button>':'')+(o.url?'<a href="'+o.url+'" target="_blank" class="btn-secondary btn-sm" style="text-decoration:none">🔗</a>':'')+'<button class="btn-secondary btn-sm" onclick="openEditOutil('+o.id+')">Modifier</button><button class="btn-danger btn-sm" onclick="deleteOutil('+o.id+')">Supprimer</button></div></div>';
     }).join(''):emptyState('🧰','Aucun document. Ajoutez-en un !');
   }catch(e){showErr('gestion-outils-content','Erreur chargement.');}
 }
 
 var pendingOutilFile=null;
 
+// Modification d'un document : on réutilise la fenêtre d'ajout.
+var _editOutilId=null;
+
+async function openEditOutil(id){
+  try{
+    var o=await SB.getById('outils',id);
+    if(!o){showToast('Document introuvable','error');return;}
+    _editOutilId=id;
+    showModal('modal-add-outil');
+    document.getElementById('no-titre').value=o.titre||'';
+    document.getElementById('no-categorie').value=o.categorie||'Autre';
+    document.getElementById('no-classe').value=o.classe||'Toutes';
+    document.getElementById('no-description').value=o.description||'';
+    document.getElementById('no-url').value=o.url||'';
+    var lab=document.getElementById('no-file-label');
+    if(lab)lab.textContent=o.fileName?'📎 Fichier actuel : '+o.fileName+' (déposez-en un autre pour le remplacer)':'';
+    var modal=document.getElementById('modal-add-outil');
+    var titre=modal.querySelector('.modal-header h3');if(titre)titre.textContent='Modifier le document';
+    var btn=modal.querySelector('.modal-actions .btn-primary');if(btn)btn.textContent='Enregistrer';
+  }catch(e){console.error(e);showToast('Erreur ouverture','error');}
+}
+
+function resetOutilModal(){
+  _editOutilId=null;pendingOutilFile=null;
+  var modal=document.getElementById('modal-add-outil');
+  if(!modal)return;
+  ['no-titre','no-description','no-url'].forEach(function(f){var el=document.getElementById(f);if(el)el.value='';});
+  var nc=document.getElementById('no-classe');if(nc)nc.value='Toutes';
+  var lo=document.getElementById('no-file-label');if(lo)lo.textContent='';
+  var titre=modal.querySelector('.modal-header h3');if(titre)titre.textContent='Ajouter un document';
+  var btn=modal.querySelector('.modal-actions .btn-primary');if(btn)btn.textContent='Ajouter';
+}
+
 async function addOutil(){
   var titre=document.getElementById('no-titre').value.trim();
   if(!titre){showToast('Veuillez saisir un titre','error');return;}
   try{
     var item={titre:titre,categorie:document.getElementById('no-categorie').value,classe:document.getElementById('no-classe').value||'Toutes',description:document.getElementById('no-description').value||null,url:document.getElementById('no-url').value||null};
+    var ancienFichier=null;
+    if(_editOutilId){
+      var actuel=await SB.getById('outils',_editOutilId);
+      if(actuel&&actuel.fileData)ancienFichier=actuel.fileData;
+    }
     if(pendingOutilFile&&pendingOutilFile.file){
       showToast('⏳ Upload en cours…');
       var path='outils/'+Date.now()+'_'+pendingOutilFile.fileName.replace(/\s/g,'_');
       var fileUrl=await SB.uploadFile(pendingOutilFile.file,path);
       item.fileData=fileUrl;item.fileName=pendingOutilFile.fileName;item.fileMime=pendingOutilFile.fileMime;
     }
-    await SB.insert('outils',item);
-    pendingOutilFile=null;closeAllModals();renderGestionOutils();showToast('✅ Document ajouté !','success');
-  }catch(e){console.error(e);showToast('Erreur ajout','error');}
+    if(_editOutilId){
+      await SB.update('outils',_editOutilId,item);
+      // Le fichier remplacé est retiré du stockage pour ne pas l'encombrer.
+      if(item.fileData&&ancienFichier&&ancienFichier!==item.fileData&&typeof ancienFichier==='string'){
+        var repere='/'+STORAGE_BUCKET+'/';var pos=ancienFichier.indexOf(repere);
+        if(pos>=0)SB.deleteFile(ancienFichier.slice(pos+repere.length)).catch(function(){});
+      }
+      resetOutilModal();closeAllModals();renderGestionOutils();showToast('✅ Document modifié !','success');
+    }else{
+      await SB.insert('outils',item);
+      resetOutilModal();closeAllModals();renderGestionOutils();showToast('✅ Document ajouté !','success');
+    }
+  }catch(e){console.error(e);showToast(_editOutilId?'Erreur modification':'Erreur ajout','error');}
 }
 
 async function deleteOutil(id){
@@ -639,27 +687,79 @@ async function renderGestionCours(){
   loading('prof-cours-list');
   try{
     var cours=await SB.get('cours');
-    document.getElementById('prof-cours-list').innerHTML=cours.length?cours.map(function(c){return'<div class="list-row"><div class="list-row-icon" style="background:var(--blue-light)">'+typeEmoji(c.type)+'</div><div class="list-row-info"><div class="list-row-title">'+c.titre+(c.nouveau?' <span class="tag tag-new">Nouveau</span>':'')+'</div><div class="list-row-sub">'+c.matiere+' · '+typeLabel(c.type)+(c.fileName?' · <span style="color:var(--green)">📎 Fichier joint</span>':'')+'</div></div><div class="list-row-actions">'+(c.fileData?'<button class="btn-gold btn-sm" onclick="previewFileSB(\''+c.id+'\',\'cours\')">👁 Voir</button>':'')+'<button class="btn-secondary btn-sm" onclick="toggleNouveauCours(\''+c.id+'\')">'+(c.nouveau?'Retirer':'Nouveau')+'</button><button class="btn-danger btn-sm" onclick="deleteCours(\''+c.id+'\')">Supprimer</button></div></div>';}).join(''):emptyState('📚','Aucun cours. Ajoutez-en un !');
+    document.getElementById('prof-cours-list').innerHTML=cours.length?cours.map(function(c){return'<div class="list-row"><div class="list-row-icon" style="background:var(--blue-light)">'+typeEmoji(c.type)+'</div><div class="list-row-info"><div class="list-row-title">'+c.titre+(c.nouveau?' <span class="tag tag-new">Nouveau</span>':'')+'</div><div class="list-row-sub">'+c.matiere+' · '+typeLabel(c.type)+(c.fileName?' · <span style="color:var(--green)">📎 Fichier joint</span>':'')+'</div></div><div class="list-row-actions">'+(c.fileData?'<button class="btn-gold btn-sm" onclick="previewFileSB(\''+c.id+'\',\'cours\')">👁 Voir</button>':'')+'<button class="btn-secondary btn-sm" onclick="openEditCours(\''+c.id+'\')">Modifier</button><button class="btn-secondary btn-sm" onclick="toggleNouveauCours(\''+c.id+'\')">'+(c.nouveau?'Retirer':'Nouveau')+'</button><button class="btn-danger btn-sm" onclick="deleteCours(\''+c.id+'\')">Supprimer</button></div></div>';}).join(''):emptyState('📚','Aucun cours. Ajoutez-en un !');
   }catch(e){showErr('prof-cours-list','Erreur chargement.');}
 }
 
 async function toggleNouveauCours(id){try{var c=await SB.getById('cours',id);await SB.update('cours',id,{nouveau:!c.nouveau});renderGestionCours();}catch(e){showToast('Erreur','error');}}
 async function deleteCours(id){if(!confirm('Supprimer ?'))return;try{await SB.delete('cours',id);renderGestionCours();showToast('Cours supprimé');}catch(e){showToast('Erreur','error');}}
 
+// Modification d'un cours : même fenêtre que la création.
+var _editCoursId=null;
+
+async function openEditCours(id){
+  try{
+    var c=await SB.getById('cours',id);
+    if(!c){showToast('Cours introuvable','error');return;}
+    _editCoursId=id;
+    showModal('modal-add-cours');
+    document.getElementById('nc-titre').value=c.titre||'';
+    document.getElementById('nc-matiere').value=c.matiere||'Technologie professionnelle';
+    document.getElementById('nc-type').value=c.type||'pdf';
+    document.getElementById('nc-url').value=(c.url&&c.url!=='#')?c.url:'';
+    document.getElementById('nc-desc').value=c.description||'';
+    document.getElementById('nc-classe').value=c.classe||'Toutes';
+    document.getElementById('nc-visible-from').value=c.visible_from||'';
+    var lab=document.getElementById('nc-file-label');
+    if(lab)lab.textContent=c.fileName?'📎 Fichier actuel : '+c.fileName+' (déposez-en un autre pour le remplacer)':'';
+    var modal=document.getElementById('modal-add-cours');
+    var t=modal.querySelector('.modal-header h3');if(t)t.textContent='Modifier le cours';
+    var b=modal.querySelector('.modal-actions .btn-primary');if(b)b.textContent='Enregistrer';
+  }catch(e){console.error(e);showToast('Erreur ouverture','error');}
+}
+
+function resetCoursModal(){
+  _editCoursId=null;pendingCoursFile=null;
+  var modal=document.getElementById('modal-add-cours');
+  if(!modal)return;
+  ['nc-titre','nc-url','nc-desc','nc-visible-from'].forEach(function(f){var el=document.getElementById(f);if(el)el.value='';});
+  var cl=document.getElementById('nc-classe');if(cl)cl.value='Toutes';
+  var lab=document.getElementById('nc-file-label');if(lab)lab.textContent='';
+  var t=modal.querySelector('.modal-header h3');if(t)t.textContent='Ajouter un cours';
+  var b=modal.querySelector('.modal-actions .btn-primary');if(b)b.textContent='Ajouter le cours';
+}
+
 async function addCours(){
   var titre=document.getElementById('nc-titre').value.trim();
   if(!titre){showToast('Veuillez saisir un titre','error');return;}
   try{
-    var item={titre:titre,matiere:document.getElementById('nc-matiere').value,type:document.getElementById('nc-type').value,url:document.getElementById('nc-url').value||'#',description:document.getElementById('nc-desc').value,date:new Date().toISOString().slice(0,10),nouveau:true,classe:document.getElementById('nc-classe').value||'Toutes',visible_from:document.getElementById('nc-visible-from').value||null};
+    var item={titre:titre,matiere:document.getElementById('nc-matiere').value,type:document.getElementById('nc-type').value,url:document.getElementById('nc-url').value||'#',description:document.getElementById('nc-desc').value,classe:document.getElementById('nc-classe').value||'Toutes',visible_from:document.getElementById('nc-visible-from').value||null};
+    var ancien=null;
+    if(_editCoursId){
+      var actuel=await SB.getById('cours',_editCoursId);
+      if(actuel&&actuel.fileData)ancien=actuel.fileData;
+    }else{
+      item.date=new Date().toISOString().slice(0,10);
+      item.nouveau=true;
+    }
     if(pendingCoursFile&&pendingCoursFile.file){
       showToast('⏳ Upload en cours…');
       var path='cours/'+Date.now()+'_'+pendingCoursFile.fileName.replace(/\s/g,'_');
       var fileUrl=await SB.uploadFile(pendingCoursFile.file,path);
       item.fileData=fileUrl;item.fileName=pendingCoursFile.fileName;item.fileMime=pendingCoursFile.fileMime;
     }
-    await SB.insert('cours',item);
-    pendingCoursFile=null;closeAllModals();renderGestionCours();showToast('✅ Cours ajouté !','success');
-  }catch(e){console.error(e);showToast('Erreur ajout cours : '+e.message,'error');}
+    if(_editCoursId){
+      await SB.update('cours',_editCoursId,item);
+      if(item.fileData&&ancien&&ancien!==item.fileData&&typeof ancien==='string'){
+        var rep='/'+STORAGE_BUCKET+'/';var pos=ancien.indexOf(rep);
+        if(pos>=0)SB.deleteFile(ancien.slice(pos+rep.length)).catch(function(){});
+      }
+      resetCoursModal();closeAllModals();renderGestionCours();showToast('✅ Cours modifié !','success');
+    }else{
+      await SB.insert('cours',item);
+      resetCoursModal();closeAllModals();renderGestionCours();showToast('✅ Cours ajouté !','success');
+    }
+  }catch(e){console.error(e);showToast(_editCoursId?'Erreur modification':'Erreur ajout cours : '+e.message,'error');}
 }
 
 
@@ -744,7 +844,7 @@ async function renderGestionExercices(){
       var couleursClasse={'2nde Bac Pro':'var(--green)','1ère Bac Pro':'var(--blue)','Terminale Bac Pro':'var(--red)'};
       var classeEx=e.classe||'Toutes';
       var classeBadge='<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--cream-dark);color:'+(couleursClasse[classeEx]||'var(--text-light)')+';font-weight:600;margin-left:6px">'+(classeEx==='Toutes'?'Toutes les classes':classeEx)+'</span>';
-      html+='<div class="list-row" style="flex-wrap:wrap;gap:8px"><div class="list-row-icon" style="background:'+(e.type==='examen'?'var(--red-light)':'var(--blue-light)')+'"> '+(e.type==='examen'?'📋':'✏️')+'</div><div class="list-row-info"><div class="list-row-title">'+e.titre+classeBadge+programmeBadge+'</div><div class="list-row-sub">'+e.matiere+' · '+qs.length+' questions'+(e.duree?' · '+e.duree+' min':'')+(e.fileName?' · <span style="color:var(--green)">📎 '+e.fileName+'</span>':'')+'</div>'+(nbFait>0?'<div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap">'+resultatsEx.map(function(r){var n=((r.res.score/r.res.total)*20).toFixed(0);return'<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:'+(parseInt(n)>=10?'var(--green-light)':'var(--red-light)')+';color:'+(parseInt(n)>=10?'var(--green)':'var(--red)')+'">'+r.eleve.prenom+' : '+n+'/20</span>';}).join('')+'</div>':'<div style="margin-top:4px;font-size:12px;color:var(--text-light)">Aucun élève n\'a encore fait cet exercice</div>')+'</div><div class="list-row-actions" style="align-self:flex-start">'+(e.fileData?'<button class="btn-gold btn-sm" onclick="previewFileSB('+e.id+',\'exercices\')">👁 Voir</button>':'')+'<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:var(--cream-dark)">'+nbFait+'/'+eleves.length+' élèves · moy. '+moyEx+'</span><span class="card-badge '+(e.type==='examen'?'badge-examen':'badge-exercice')+'">'+e.type+'</span><button class="btn-danger btn-sm" onclick="deleteExercice('+e.id+')">Supprimer</button></div></div>';
+      html+='<div class="list-row" style="flex-wrap:wrap;gap:8px"><div class="list-row-icon" style="background:'+(e.type==='examen'?'var(--red-light)':'var(--blue-light)')+'"> '+(e.type==='examen'?'📋':'✏️')+'</div><div class="list-row-info"><div class="list-row-title">'+e.titre+classeBadge+programmeBadge+'</div><div class="list-row-sub">'+e.matiere+' · '+qs.length+' questions'+(e.duree?' · '+e.duree+' min':'')+(e.fileName?' · <span style="color:var(--green)">📎 '+e.fileName+'</span>':'')+'</div>'+(nbFait>0?'<div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap">'+resultatsEx.map(function(r){var n=((r.res.score/r.res.total)*20).toFixed(0);return'<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:'+(parseInt(n)>=10?'var(--green-light)':'var(--red-light)')+';color:'+(parseInt(n)>=10?'var(--green)':'var(--red)')+'">'+r.eleve.prenom+' : '+n+'/20</span>';}).join('')+'</div>':'<div style="margin-top:4px;font-size:12px;color:var(--text-light)">Aucun élève n\'a encore fait cet exercice</div>')+'</div><div class="list-row-actions" style="align-self:flex-start">'+(e.fileData?'<button class="btn-gold btn-sm" onclick="previewFileSB('+e.id+',\'exercices\')">👁 Voir</button>':'')+'<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:var(--cream-dark)">'+nbFait+'/'+eleves.length+' élèves · moy. '+moyEx+'</span><span class="card-badge '+(e.type==='examen'?'badge-examen':'badge-exercice')+'">'+e.type+'</span><button class="btn-secondary btn-sm" onclick="openEditExercice('+e.id+')">Modifier</button><button class="btn-danger btn-sm" onclick="deleteExercice('+e.id+')">Supprimer</button></div></div>';
     }
     document.getElementById('prof-exercices-list').innerHTML=html||emptyState('🎯','Aucun exercice');
   }catch(e){showErr('prof-exercices-list','Erreur chargement.');}
@@ -756,24 +856,84 @@ function addQuestion(){var idx=questionBlocks.length;questionBlocks.push({q:'',o
 function setCorrect(qIdx,optIdx){questionBlocks[qIdx].correct=optIdx;[0,1,2,3].forEach(function(i){var el=document.getElementById('oc-'+qIdx+'-'+i);if(el)el.classList.toggle('selected',i===optIdx);});}
 function removeQuestion(idx){var el=document.getElementById('qblock-'+idx);if(el)el.remove();questionBlocks[idx]=null;}
 
+// Modification d'un exercice ou d'un examen. Les questions déjà créées sont
+// conservées ; celles ajoutées dans la fenêtre viennent s'ajouter à la suite.
+var _editExerciceId=null;
+var _questionsExistantes=[];
+
+async function openEditExercice(id){
+  try{
+    var e=await SB.getById('exercices',id);
+    if(!e){showToast('Exercice introuvable','error');return;}
+    _editExerciceId=id;
+    _questionsExistantes=Array.isArray(e.questions)?e.questions:(e.questions?JSON.parse(e.questions):[]);
+    showModal('modal-add-exercice');
+    document.getElementById('ne-titre').value=e.titre||'';
+    document.getElementById('ne-type').value=e.type||'exercice';
+    toggleExamMode();
+    if(e.duree)document.getElementById('ne-duree').value=e.duree;
+    document.getElementById('ne-matiere').value=e.matiere||'Technologie professionnelle';
+    document.getElementById('ne-classe').value=e.classe||'Toutes';
+    document.getElementById('ne-url').value=e.url||'';
+    document.getElementById('ne-visible-from').value=e.visible_from||'';
+    var lab=document.getElementById('ne-file-label');
+    if(lab)lab.textContent=e.fileName?'📎 Fichier actuel : '+e.fileName+' (déposez-en un autre pour le remplacer)':'';
+    var liste=document.getElementById('questions-list');
+    if(liste)liste.innerHTML=_questionsExistantes.length
+      ? '<div style="background:var(--cream-dark);border-radius:var(--radius);padding:10px 14px;font-size:12px;color:var(--text-mid);margin-bottom:10px">'+_questionsExistantes.length+' question(s) déjà enregistrée(s) — elles sont conservées. Ajoutez-en ci-dessous pour compléter.</div>'
+      : '';
+    var modal=document.getElementById('modal-add-exercice');
+    var t=modal.querySelector('.modal-header h3');if(t)t.textContent='Modifier l\'exercice';
+    var b=modal.querySelector('.modal-actions .btn-primary');if(b)b.textContent='Enregistrer';
+  }catch(e){console.error(e);showToast('Erreur ouverture','error');}
+}
+
+function resetExerciceModal(){
+  _editExerciceId=null;_questionsExistantes=[];questionBlocks=[];pendingExerciceFile=null;
+  var modal=document.getElementById('modal-add-exercice');
+  if(!modal)return;
+  ['ne-titre','ne-url','ne-visible-from'].forEach(function(f){var el=document.getElementById(f);if(el)el.value='';});
+  var cl=document.getElementById('ne-classe');if(cl)cl.value='Toutes';
+  var lab=document.getElementById('ne-file-label');if(lab)lab.textContent='';
+  var liste=document.getElementById('questions-list');if(liste)liste.innerHTML='';
+  var t=modal.querySelector('.modal-header h3');if(t)t.textContent='Créer un exercice ou un examen';
+  var b=modal.querySelector('.modal-actions .btn-primary');if(b)b.textContent='Créer';
+}
+
 async function saveExercice(){
   var titre=document.getElementById('ne-titre').value.trim();
   if(!titre){showToast('Veuillez saisir un titre','error');return;}
   var qs=questionBlocks.filter(Boolean).filter(function(q){return q.q&&q.opts.some(function(o){return o;});});
-  // Questions obligatoires seulement si pas de fichier joint
-  if(!qs.length&&!pendingExerciceFile){showToast('Ajoutez au moins une question ou joignez un document','error');return;}
   var type=document.getElementById('ne-type').value;
   try{
-    var item={titre:titre,type:type,classe:document.getElementById('ne-classe').value||'Toutes',matiere:document.getElementById('ne-matiere').value,duree:type==='examen'?parseInt(document.getElementById('ne-duree').value):null,questions:qs.length?qs:[],url:document.getElementById('ne-url').value||null,visible_from:document.getElementById('ne-visible-from').value||null};
+    var ancien=null,dejaFichier=false;
+    if(_editExerciceId){
+      var actuel=await SB.getById('exercices',_editExerciceId);
+      if(actuel&&actuel.fileData){ancien=actuel.fileData;dejaFichier=true;}
+    }
+    var toutesQuestions=_editExerciceId?_questionsExistantes.concat(qs):qs;
+    if(!toutesQuestions.length&&!pendingExerciceFile&&!dejaFichier){
+      showToast('Ajoutez au moins une question ou joignez un document','error');return;
+    }
+    var item={titre:titre,type:type,classe:document.getElementById('ne-classe').value||'Toutes',matiere:document.getElementById('ne-matiere').value,duree:type==='examen'?parseInt(document.getElementById('ne-duree').value):null,questions:toutesQuestions,url:document.getElementById('ne-url').value||null,visible_from:document.getElementById('ne-visible-from').value||null};
     if(pendingExerciceFile&&pendingExerciceFile.file){
       showToast('⏳ Upload en cours…');
       var path='exercices/'+Date.now()+'_'+pendingExerciceFile.fileName.replace(/\s/g,'_');
       var fileUrl=await SB.uploadFile(pendingExerciceFile.file,path);
       item.fileData=fileUrl;item.fileName=pendingExerciceFile.fileName;item.fileMime=pendingExerciceFile.fileMime;
     }
-    await SB.insert('exercices',item);
-    closeAllModals();questionBlocks=[];pendingExerciceFile=null;document.getElementById('questions-list').innerHTML='';renderGestionExercices();showToast('✅ Exercice créé !','success');
-  }catch(e){showToast('Erreur création exercice','error');}
+    if(_editExerciceId){
+      await SB.update('exercices',_editExerciceId,item);
+      if(item.fileData&&ancien&&ancien!==item.fileData&&typeof ancien==='string'){
+        var rep='/'+STORAGE_BUCKET+'/';var pos=ancien.indexOf(rep);
+        if(pos>=0)SB.deleteFile(ancien.slice(pos+rep.length)).catch(function(){});
+      }
+      resetExerciceModal();closeAllModals();renderGestionExercices();showToast('✅ Exercice modifié !','success');
+    }else{
+      await SB.insert('exercices',item);
+      resetExerciceModal();closeAllModals();renderGestionExercices();showToast('✅ Exercice créé !','success');
+    }
+  }catch(e){console.error(e);showToast(_editExerciceId?'Erreur modification':'Erreur création exercice','error');}
 }
 
 // PROF : TRAVAUX RENDUS
@@ -982,12 +1142,12 @@ async function addDevoir(){
 function showModal(id){
   document.getElementById('modal-overlay').classList.remove('hidden');
   document.getElementById(id).classList.remove('hidden');
-  if(id==='modal-add-outil'){pendingOutilFile=null;var nc=document.getElementById('no-classe');if(nc)nc.value='Toutes';var lo=document.getElementById('no-file-label');if(lo)lo.textContent='';setupDropZone('no-drop-zone','no-file-input','no-file-label',function(f){pendingOutilFile=f;});}
-  if(id==='modal-add-cours'){pendingCoursFile=null;var l=document.getElementById('nc-file-label');if(l)l.textContent='';setupDropZone('nc-drop-zone','nc-file-input','nc-file-label',function(f){pendingCoursFile=f;});}
-  if(id==='modal-add-exercice'){pendingExerciceFile=null;var l2=document.getElementById('ne-file-label');if(l2)l2.textContent='';setupDropZone('ne-drop-zone','ne-file-input','ne-file-label',function(f){pendingExerciceFile=f;});}
+  if(id==='modal-add-outil'){if(!_editOutilId)resetOutilModal();setupDropZone('no-drop-zone','no-file-input','no-file-label',function(f){pendingOutilFile=f;});}
+  if(id==='modal-add-cours'){if(!_editCoursId)resetCoursModal();setupDropZone('nc-drop-zone','nc-file-input','nc-file-label',function(f){pendingCoursFile=f;});}
+  if(id==='modal-add-exercice'){if(!_editExerciceId)resetExerciceModal();setupDropZone('ne-drop-zone','ne-file-input','ne-file-label',function(f){pendingExerciceFile=f;});}
   if(id==='modal-add-devoir'){pendingDevoirFile=null;var l3=document.getElementById('nd-file-label');if(l3)l3.textContent='';setupDropZone('nd-drop-zone','nd-file-input','nd-file-label',function(f){pendingDevoirFile=f;});}
   if(id==='modal-add-eleve'&&!_editEleveId){resetEleveModal();}
-}function closeAllModals(){document.getElementById('modal-overlay').classList.add('hidden');document.querySelectorAll('.modal').forEach(function(m){m.classList.add('hidden');});if(_editEleveId)resetEleveModal();}
+}function closeAllModals(){document.getElementById('modal-overlay').classList.add('hidden');document.querySelectorAll('.modal').forEach(function(m){m.classList.add('hidden');});if(_editEleveId)resetEleveModal();if(_editOutilId)resetOutilModal();if(_editCoursId)resetCoursModal();if(_editExerciceId)resetExerciceModal();}
 
 // TOAST
 var toastTimeout;
